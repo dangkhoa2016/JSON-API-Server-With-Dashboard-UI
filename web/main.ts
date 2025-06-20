@@ -40,7 +40,15 @@ app.use(trpc, {
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: [],
+  routes: [
+    { path: '/', name: 'home', component: () => import('./pages/Home.vue') },
+    { path: '/users', name: 'users', component: () => import('./pages/Users.vue') },
+    { path: '/posts', name: 'posts', component: () => import('./pages/Posts.vue') },
+    { path: '/comments', name: 'comments', component: () => import('./pages/Comments.vue') },
+    { path: '/albums', name: 'albums', component: () => import('./pages/Albums.vue') },
+    { path: '/photos', name: 'photos', component: () => import('./pages/Photos.vue') },
+    { path: '/todos', name: 'todos', component: () => import('./pages/Todos.vue') },
+  ],
 })
 
 app.use(router)
