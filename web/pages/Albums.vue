@@ -15,7 +15,7 @@ const { list, create, update, handleCreate, handleUpdate, handleDelete } = useRe
   <ResourcePage
     title="Albums"
     :fields="fields"
-    :items="list.data.value"
+    :items="list.data.value?.data"
     :is-loading="list.isLoading.value"
     :is-creating="create.isPending.value"
     :is-updating="update.isPending.value"

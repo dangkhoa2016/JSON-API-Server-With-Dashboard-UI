@@ -35,8 +35,8 @@ function handleDelete(id: number) {
 }
 
 const formattedItems = computed(() => {
-  if (!list.data.value) return []
-  return list.data.value.map((item: any) => ({
+  if (!list.data.value?.data) return []
+  return list.data.value.data.map((item: any) => ({
     ...item,
     address: item.address ? JSON.stringify(item.address, null, 2) : '',
     company: item.company ? JSON.stringify(item.company, null, 2) : '',

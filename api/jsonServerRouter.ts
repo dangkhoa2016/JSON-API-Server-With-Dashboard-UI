@@ -14,8 +14,7 @@ export const VALID_RESOURCES = [
 // Helper to build cache key
 function cacheKey(resource: string, id?: string | number, query?: string): string {
   if (id) return `cache:${resource}:${id}`;
-  if (query) return `cache:${resource}:q:${query}`;
-  return `cache:${resource}:all`;
+  return `cache:${resource}:q:${query}`;
 }
 
 // Helper to try cache first
@@ -56,17 +55,25 @@ async function handleList<T>(
   resource: string,
   table: any,
   input: { filters: Record<string, any>; sort?: string; order?: string; limit?: number; page?: number; q?: string }
-): Promise<T[]> {
+): Promise<{ data: T[]; total: number }> {
   const cacheK = cacheKey(resource, undefined, JSON.stringify(input));
   
-  return tryCache<T[]>(cacheK, async () => {
+  return tryCache<{ data: T[]; total: number }>(cacheK, async () => {
     const db = getDb();
     const conditions = buildWhereConditions(table, input.filters);
     
-    let baseQuery = db.select().from(table);
-    
+    // Count query (with filters, no pagination/sorting)
+    let countQuery = db.select({ count: sql<number>`count(*)` }).from(table);
     if (conditions.length > 0) {
-      baseQuery = baseQuery.where(and(...conditions)) as any;
+      countQuery = countQuery.where(and(...conditions)) as any;
+    }
+    const countResult = await countQuery;
+    const total = Number(countResult[0].count);
+    
+    // Data query
+    let dataQuery = db.select().from(table);
+    if (conditions.length > 0) {
+      dataQuery = dataQuery.where(and(...conditions)) as any;
     }
     
     // Sorting
@@ -78,7 +85,7 @@ async function handleList<T>(
         const dir = (orders[i] || "asc").toLowerCase();
         const column = table[field];
         if (column) {
-          baseQuery = baseQuery.orderBy(
+          dataQuery = dataQuery.orderBy(
             dir === "desc" ? desc(column) : asc(column)
           ) as any;
         }
@@ -88,10 +95,11 @@ async function handleList<T>(
     // Pagination
     if (input.limit) {
       const page = input.page || 1;
-      baseQuery = (baseQuery as any).limit(input.limit).offset((page - 1) * input.limit);
+      dataQuery = (dataQuery as any).limit(input.limit).offset((page - 1) * input.limit);
     }
     
-    return baseQuery as Promise<T[]>;
+    const data = await dataQuery;
+    return { data: data as T[], total };
   });
 }
 
@@ -144,7 +152,7 @@ async function handleDelete(resource: string, table: any, id: number): Promise<b
 
 // Query params schema
 const listInputSchema = z.object({
-  filters: z.record(z.string(), z.any()).optional().default(() => ({})),
+  filters: z.record(z.string(), z.string()).optional().default(() => ({})),
   sort: z.string().optional(),
   order: z.string().optional(),
   limit: z.number().int().positive().optional(),
@@ -174,8 +182,8 @@ export const jsonServerRouter = createRouter({
     list: publicQuery
       .input(listInputSchema)
       .query(async ({ input }) => {
-        const items = await handleList<User>("users", users, input);
-        return items.map(deserializeUser);
+        const result = await handleList<User>("users", users, input);
+        return { ...result, data: result.data.map(deserializeUser) };
       }),
 
     count: publicQuery.query(() => handleCount("users", users)),
