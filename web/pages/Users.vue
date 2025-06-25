@@ -17,7 +17,18 @@ const fields = [
   { key: 'company', label: 'Company', type: 'text' as const },
 ]
 
-const list = trpc.json.users.list.useQuery({ filters: {} })
+const page = ref(1)
+const perPage = 25
+
+const list = trpc.json.users.list.useQuery(
+  { filters: {}, limit: perPage, page },
+  {
+    /* v8 ignore next */
+    placeholderData: (prev) => prev,
+    /* v8 ignore next */
+    queryKey: computed(() => [{ subsystem: "trpc", path: "json.users.list", page: page.value, filters: {} }]),
+  },
+)
 const create = trpc.json.users.create.useMutation()
 const update = trpc.json.users.update.useMutation()
 const del = trpc.json.users.delete.useMutation()
@@ -130,6 +141,9 @@ function setComp(field: string, e: Event) {
     title="Users"
     :fields="fields"
     :items="formattedItems"
+    :total="list.data.value?.total ?? 0"
+    v-model:page="page"
+    :per-page="perPage"
     :is-loading="list.isLoading.value"
     :is-creating="create.isPending.value"
     :is-updating="update.isPending.value"

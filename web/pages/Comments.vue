@@ -10,7 +10,7 @@ const fields = [
   { key: 'postId', label: 'Post ID', type: 'number' as const, required: true },
 ]
 
-const { list, create, update, handleCreate, handleUpdate, handleDelete } = useResourceCrud('comments')
+const { list, create, update, handleCreate, handleUpdate, handleDelete, page, perPage } = useResourceCrud('comments')
 </script>
 
 <template>
@@ -18,6 +18,9 @@ const { list, create, update, handleCreate, handleUpdate, handleDelete } = useRe
     title="Comments"
     :fields="fields"
     :items="list.data.value?.data"
+    :total="list.data.value?.total ?? 0"
+    v-model:page="page"
+    :per-page="perPage"
     :is-loading="list.isLoading.value"
     :is-creating="create.isPending.value"
     :is-updating="update.isPending.value"
