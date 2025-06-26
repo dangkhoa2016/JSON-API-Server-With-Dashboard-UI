@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users, posts, comments, albums, photos, todos } from "@db/schema";
-import { eq, like, and, asc, desc, sql } from "drizzle-orm";
+import { eq, like, and, or, asc, desc, sql } from "drizzle-orm";
 import { getCache, setCache, invalidateCache } from "./lib/redis";
 import { env } from "./lib/env";
 import type { User, Post, Comment, Album, Photo, Todo } from "@db/schema";
@@ -12,8 +12,8 @@ export const VALID_RESOURCES = [
 ] as const;
 
 // Helper to build cache key
-function cacheKey(resource: string, id?: string | number, query?: string): string {
-  if (id) return `cache:${resource}:${id}`;
+function cacheKey(resource: string, query: string, id?: string | number): string {
+  if (id !== undefined) return `cache:${resource}:${id}`;
   return `cache:${resource}:q:${query}`;
 }
 
@@ -54,13 +54,21 @@ function buildWhereConditions(
 async function handleList<T>(
   resource: string,
   table: any,
-  input: { filters: Record<string, any>; sort?: string; order?: string; limit?: number; page?: number; q?: string }
+  input: { filters: Record<string, any>; sort?: string; order?: string; limit?: number; page?: number; q?: string },
+  searchFields?: string[]
 ): Promise<{ data: T[]; total: number }> {
-  const cacheK = cacheKey(resource, undefined, JSON.stringify(input));
+  const cacheK = cacheKey(resource, JSON.stringify(input));
   
   return tryCache<{ data: T[]; total: number }>(cacheK, async () => {
     const db = getDb();
     const conditions = buildWhereConditions(table, input.filters);
+    
+    // Add full-text search if q is provided
+    if (input.q && searchFields && searchFields.length > 0) {
+      const escaped = input.q.replace(/[%_]/g, '\\$&');
+      const searchConditions = searchFields.map(f => like(table[f], `%${escaped}%`));
+      conditions.push(or(...searchConditions));
+    }
     
     // Count query (with filters, no pagination/sorting)
     let countQuery = db.select({ count: sql<number>`count(*)` }).from(table);
@@ -115,7 +123,7 @@ async function handleCount(resource: string, table: any): Promise<number> {
 
 // Generic get by id
 async function handleGetById<T>(resource: string, table: any, id: number): Promise<T | null> {
-  const cacheK = cacheKey(resource, id);
+  const cacheK = cacheKey(resource, '', id);
   return tryCache<T | null>(cacheK, async () => {
     const db = getDb();
     const results = await db.select().from(table).where(eq(table.id, id)).limit(1);
@@ -182,7 +190,7 @@ export const jsonServerRouter = createRouter({
     list: publicQuery
       .input(listInputSchema)
       .query(async ({ input }) => {
-        const result = await handleList<User>("users", users, input);
+        const result = await handleList<User>("users", users, input, ["name", "username", "email", "phone", "website", "address", "company"]);
         return { ...result, data: result.data.map(deserializeUser) };
       }),
 
@@ -237,7 +245,7 @@ export const jsonServerRouter = createRouter({
   posts: createRouter({
     list: publicQuery
       .input(listInputSchema)
-      .query(({ input }) => handleList<Post>("posts", posts, input)),
+      .query(({ input }) => handleList<Post>("posts", posts, input, ["title", "body"])),
     
     count: publicQuery.query(() => handleCount("posts", posts)),
     
@@ -273,7 +281,7 @@ export const jsonServerRouter = createRouter({
   comments: createRouter({
     list: publicQuery
       .input(listInputSchema)
-      .query(({ input }) => handleList<Comment>("comments", comments, input)),
+      .query(({ input }) => handleList<Comment>("comments", comments, input, ["name", "email", "body"])),
     
     count: publicQuery.query(() => handleCount("comments", comments)),
     
@@ -311,7 +319,7 @@ export const jsonServerRouter = createRouter({
   albums: createRouter({
     list: publicQuery
       .input(listInputSchema)
-      .query(({ input }) => handleList<Album>("albums", albums, input)),
+      .query(({ input }) => handleList<Album>("albums", albums, input, ["title"])),
     
     count: publicQuery.query(() => handleCount("albums", albums)),
     
@@ -345,7 +353,7 @@ export const jsonServerRouter = createRouter({
   photos: createRouter({
     list: publicQuery
       .input(listInputSchema)
-      .query(({ input }) => handleList<Photo>("photos", photos, input)),
+      .query(({ input }) => handleList<Photo>("photos", photos, input, ["title", "url", "thumbnailUrl"])),
     
     count: publicQuery.query(() => handleCount("photos", photos)),
     
@@ -383,7 +391,7 @@ export const jsonServerRouter = createRouter({
   todos: createRouter({
     list: publicQuery
       .input(listInputSchema)
-      .query(({ input }) => handleList<Todo>("todos", todos, input)),
+      .query(({ input }) => handleList<Todo>("todos", todos, input, ["title"])),
     
     count: publicQuery.query(() => handleCount("todos", todos)),
     
