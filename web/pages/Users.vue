@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button.vue'
 import Label from '@/components/ui/Label.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import { Users } from '@lucide/vue'
+import { toast } from 'vue-sonner'
 
 const fields = [
   { key: 'name', label: 'Name', type: 'text' as const, required: true },
@@ -17,6 +18,7 @@ const fields = [
   { key: 'company', label: 'Company', type: 'text' as const },
 ]
 
+const title = 'Users'
 const page = ref(1)
 const perPage = 25
 
@@ -34,15 +36,39 @@ const update = trpc.json.users.update.useMutation()
 const del = trpc.json.users.delete.useMutation()
 
 function handleCreate(data: any) {
-  create.mutate(data, { onSuccess: () => list.refetch() })
+  create.mutate(data, {
+    onSuccess: () => {
+      list.refetch()
+      toast.success(title, { description: 'User created successfully.' })
+    },
+    onError: (err) => {
+      toast.error('Failed', { description: err.message })
+    },
+  })
 }
 
 function handleUpdate(id: number, data: any) {
-  update.mutate({ id, data }, { onSuccess: () => list.refetch() })
+  update.mutate({ id, data }, {
+    onSuccess: () => {
+      list.refetch()
+      toast.success(title, { description: 'User updated successfully.' })
+    },
+    onError: (err) => {
+      toast.error('Failed', { description: err.message })
+    },
+  })
 }
 
 function handleDelete(id: number) {
-  del.mutate({ id }, { onSuccess: () => list.refetch() })
+  del.mutate({ id }, {
+    onSuccess: () => {
+      list.refetch()
+      toast.success(title, { description: 'User deleted successfully.' })
+    },
+    onError: (err) => {
+      toast.error('Failed', { description: err.message })
+    },
+  })
 }
 
 const formattedItems = computed(() => {
@@ -229,7 +255,7 @@ function setComp(field: string, e: Event) {
       </div>
       <div class="flex justify-end gap-2">
         <Button variant="outline" @click="addressModalOpen = false">Cancel</Button>
-        <Button @click="saveAddress">Save</Button>
+        <Button @click="saveAddress">Save Address</Button>
       </div>
     </div>
   </Dialog>
@@ -269,7 +295,7 @@ function setComp(field: string, e: Event) {
       </div>
       <div class="flex justify-end gap-2">
         <Button variant="outline" @click="companyModalOpen = false">Cancel</Button>
-        <Button @click="saveCompany">Save</Button>
+        <Button @click="saveCompany">Save Company</Button>
       </div>
     </div>
   </Dialog>
