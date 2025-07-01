@@ -7,6 +7,7 @@ import Label from '@/components/ui/Label.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import { Users } from '@lucide/vue'
 import { toast } from 'vue-sonner'
+import { tryParseJson } from '@/lib/utils'
 
 const fields = [
   { key: 'name', label: 'Name', type: 'text' as const, required: true },
@@ -38,8 +39,8 @@ const create = trpc.json.users.create.useMutation()
 const update = trpc.json.users.update.useMutation()
 const del = trpc.json.users.delete.useMutation()
 
-function handleCreate(data: any) {
-  create.mutate(data, {
+function handleCreate(data: Record<string, unknown>) {
+  create.mutate(data as never, {
     onSuccess: () => {
       list.refetch()
       toast.success(title, { description: 'User created successfully.' })
@@ -50,8 +51,8 @@ function handleCreate(data: any) {
   })
 }
 
-function handleUpdate(id: number, data: any) {
-  update.mutate({ id, data }, {
+function handleUpdate(id: number, data: Record<string, unknown>) {
+  update.mutate({ id, data } as never, {
     onSuccess: () => {
       list.refetch()
       toast.success(title, { description: 'User updated successfully.' })
@@ -86,7 +87,7 @@ function handleSort(field: string | undefined, order: 'asc' | 'desc') {
 
 const formattedItems = computed(() => {
   if (!list.data.value?.data) return []
-  return list.data.value.data.map((item: any) => ({
+  return list.data.value.data.map((item: Record<string, unknown>) => ({
     ...item,
     address: item.address ? JSON.stringify(item.address, null, 2) : '',
     company: item.company ? JSON.stringify(item.company, null, 2) : '',
@@ -96,18 +97,20 @@ const formattedItems = computed(() => {
 // ── Address modal ──────────────────────────────────────────────
 const addressModalOpen = ref(false)
 const addressData = ref({ street: '', suite: '', city: '', zipcode: '', lat: '', lng: '' })
-let addressUpdateFn: ((v: string) => void) | null = null
+const addressUpdateFn = ref<((v: string) => void) | null>(null)
 
 function openAddressModal(value: string | undefined, update: (v: string) => void) {
-  addressUpdateFn = update
-  const obj = typeof value === 'string' && value ? tryParseJson(value) : {}
+  addressUpdateFn.value = update
+  const obj: Record<string, unknown> = typeof value === 'string' && value
+    ? tryParseJson(value)
+    : (value as unknown as Record<string, unknown>) ?? {}
   addressData.value = {
-    street: obj?.street || '',
-    suite: obj?.suite || '',
-    city: obj?.city || '',
-    zipcode: obj?.zipcode || '',
-    lat: obj?.geo?.lat || '',
-    lng: obj?.geo?.lng || '',
+    street: (obj?.street as string) || '',
+    suite: (obj?.suite as string) || '',
+    city: (obj?.city as string) || '',
+    zipcode: (obj?.zipcode as string) || '',
+    lat: ((obj?.geo as Record<string, string>)?.lat as string) || '',
+    lng: ((obj?.geo as Record<string, string>)?.lng as string) || '',
   }
   addressModalOpen.value = true
 }
@@ -116,29 +119,31 @@ function saveAddress() {
   const geo: Record<string, string> = {}
   if (addressData.value.lat) geo.lat = addressData.value.lat
   if (addressData.value.lng) geo.lng = addressData.value.lng
-  const obj: Record<string, any> = {}
+  const obj: Record<string, unknown> = {}
   if (addressData.value.street) obj.street = addressData.value.street
   if (addressData.value.suite) obj.suite = addressData.value.suite
   if (addressData.value.city) obj.city = addressData.value.city
   if (addressData.value.zipcode) obj.zipcode = addressData.value.zipcode
   if (Object.keys(geo).length) obj.geo = geo
   const json = Object.keys(obj).length ? JSON.stringify(obj) : ''
-  addressUpdateFn?.(json)
+  addressUpdateFn.value?.(json)
   addressModalOpen.value = false
 }
 
 // ── Company modal ──────────────────────────────────────────────
 const companyModalOpen = ref(false)
 const companyData = ref({ name: '', catchPhrase: '', bs: '' })
-let companyUpdateFn: ((v: string) => void) | null = null
+const companyUpdateFn = ref<((v: string) => void) | null>(null)
 
 function openCompanyModal(value: string | undefined, update: (v: string) => void) {
-  companyUpdateFn = update
-  const obj = typeof value === 'string' && value ? tryParseJson(value) : {}
+  companyUpdateFn.value = update
+  const obj: Record<string, unknown> = typeof value === 'string' && value
+    ? tryParseJson(value)
+    : (value as unknown as Record<string, unknown>) ?? {}
   companyData.value = {
-    name: obj?.name || '',
-    catchPhrase: obj?.catchPhrase || '',
-    bs: obj?.bs || '',
+    name: (obj?.name as string) || '',
+    catchPhrase: (obj?.catchPhrase as string) || '',
+    bs: (obj?.bs as string) || '',
   }
   companyModalOpen.value = true
 }
@@ -149,12 +154,8 @@ function saveCompany() {
   if (companyData.value.catchPhrase) obj.catchPhrase = companyData.value.catchPhrase
   if (companyData.value.bs) obj.bs = companyData.value.bs
   const json = Object.keys(obj).length ? JSON.stringify(obj) : ''
-  companyUpdateFn?.(json)
+  companyUpdateFn.value?.(json)
   companyModalOpen.value = false
-}
-
-function tryParseJson(str: string): any {
-  try { return JSON.parse(str) } catch { return {} }
 }
 
 function summary(value: string | undefined): string {
@@ -164,14 +165,12 @@ function summary(value: string | undefined): string {
   return value.length > 60 ? value.slice(0, 60) + '...' : value
 }
 
-function setAddr(field: string, e: Event) {
-  const val = (e.target as HTMLInputElement).value
-  addressData.value = { ...addressData.value, [field]: val }
-}
-
-function setComp(field: string, e: Event) {
-  const val = (e.target as HTMLInputElement).value
-  companyData.value = { ...companyData.value, [field]: val }
+function setField(
+  target: Record<string, string>,
+  field: string,
+  e: Event
+) {
+  target[field] = (e.target as HTMLInputElement).value
 }
 </script>
 
@@ -219,7 +218,7 @@ function setComp(field: string, e: Event) {
             id="addr-street"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="addressData.street"
-            @input="setAddr('street', $event)"
+            @input="setField(addressData, 'street', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -228,7 +227,7 @@ function setComp(field: string, e: Event) {
             id="addr-suite"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="addressData.suite"
-            @input="setAddr('suite', $event)"
+            @input="setField(addressData, 'suite', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -237,7 +236,7 @@ function setComp(field: string, e: Event) {
             id="addr-city"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="addressData.city"
-            @input="setAddr('city', $event)"
+            @input="setField(addressData, 'city', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -246,7 +245,7 @@ function setComp(field: string, e: Event) {
             id="addr-zipcode"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="addressData.zipcode"
-            @input="setAddr('zipcode', $event)"
+            @input="setField(addressData, 'zipcode', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -255,7 +254,7 @@ function setComp(field: string, e: Event) {
             id="addr-lat"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="addressData.lat"
-            @input="setAddr('lat', $event)"
+            @input="setField(addressData, 'lat', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -264,7 +263,7 @@ function setComp(field: string, e: Event) {
             id="addr-lng"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="addressData.lng"
-            @input="setAddr('lng', $event)"
+            @input="setField(addressData, 'lng', $event)"
           />
         </div>
       </div>
@@ -286,7 +285,7 @@ function setComp(field: string, e: Event) {
             id="comp-name"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="companyData.name"
-            @input="setComp('name', $event)"
+            @input="setField(companyData, 'name', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -295,7 +294,7 @@ function setComp(field: string, e: Event) {
             id="comp-catch"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="companyData.catchPhrase"
-            @input="setComp('catchPhrase', $event)"
+            @input="setField(companyData, 'catchPhrase', $event)"
           />
         </div>
         <div class="space-y-1">
@@ -304,7 +303,7 @@ function setComp(field: string, e: Event) {
             id="comp-bs"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             :value="companyData.bs"
-            @input="setComp('bs', $event)"
+            @input="setField(companyData, 'bs', $event)"
           />
         </div>
       </div>
