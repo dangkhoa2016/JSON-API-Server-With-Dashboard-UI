@@ -10,7 +10,9 @@ const fields = [
   { key: 'postId', label: 'Post ID', type: 'number' as const, required: true },
 ]
 
-const { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, page, perPage } = useResourceCrud('comments')
+const crud = useResourceCrud('comments')
+defineExpose({ searchQuery: crud.searchQuery, sortField: crud.sortField, sortOrder: crud.sortOrder })
+const { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, page, perPage } = crud
 </script>
 
 <template>

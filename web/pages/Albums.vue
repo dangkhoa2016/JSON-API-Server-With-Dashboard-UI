@@ -8,7 +8,9 @@ const fields = [
   { key: 'userId', label: 'User ID', type: 'number' as const, required: true },
 ]
 
-const { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, page, perPage } = useResourceCrud('albums')
+const crud = useResourceCrud('albums')
+defineExpose({ searchQuery: crud.searchQuery, sortField: crud.sortField, sortOrder: crud.sortOrder })
+const { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, page, perPage } = crud
 </script>
 
 <template>

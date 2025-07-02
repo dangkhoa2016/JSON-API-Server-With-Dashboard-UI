@@ -81,5 +81,5 @@ export function useResourceCrud(resource: ResourceName, opts?: { perPage?: numbe
     sortOrder.value = order
   }
 
-  return { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, page, perPage }
+  return { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, searchQuery, sortField, sortOrder, page, perPage }
 }
