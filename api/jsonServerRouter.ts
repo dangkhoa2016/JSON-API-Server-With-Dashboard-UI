@@ -44,6 +44,7 @@ function buildWhereConditions(
   const conditions: any[] = [];
   for (const [key, value] of Object.entries(filters)) {
     if (key === "_sort" || key === "_order" || key === "_limit" || key === "_page" || key === "q") continue;
+    if (!table[key]) continue;
     if (typeof value === "string" && value.includes("*")) {
       conditions.push(like(table[key], value.replace(/\*/g, "%")));
     } else {
@@ -140,7 +141,10 @@ async function handleCreate<T>(resource: string, table: any, data: Record<string
   const result = await db.insert(table).values(data).returning({ id: table.id }) as any[];
   const fullRecord = await handleGetById<T>(resource, table, result[0].id);
   await invalidateCache(`cache:${resource}:*`);
-  return fullRecord!;
+  if (!fullRecord) {
+    throw new Error(`Failed to retrieve created record in ${resource}`);
+  }
+  return fullRecord;
 }
 
 // Generic update
