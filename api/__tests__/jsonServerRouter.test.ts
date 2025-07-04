@@ -162,6 +162,13 @@ describe('users', () => {
     const deleted = await r.delete({ id: 1 })
     expect(deleted).toBe(true)
   })
+
+  it('ignores filter keys that do not match any column', async () => {
+    await r.create({ name: 'Eve', email: 'eve@test.com' })
+    const result = await r.list({ filters: { nonexistent_column: 'value', name: 'Eve' } })
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0].name).toBe('Eve')
+  })
 })
 
 describe('posts CRUD', () => {
