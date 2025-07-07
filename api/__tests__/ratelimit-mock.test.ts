@@ -86,6 +86,23 @@ describe("rateLimitMiddleware with in-memory store", () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it("extracts first IP from comma-separated x-forwarded-for", async () => {
+    const c = createMockContext("100.100.100.100 , 5.6.7.8");
+    const next = vi.fn();
+
+    await rateLimitMiddleware(c, next);
+    await rateLimitMiddleware(c, next);
+    await rateLimitMiddleware(c, next);
+    expect(next).toHaveBeenCalledTimes(3);
+
+    await rateLimitMiddleware(c, next);
+    expect(next).toHaveBeenCalledTimes(3);
+    expect(c.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "Too many requests" }),
+      429,
+    );
+  });
+
   it("uses unknown for requests without IP headers", async () => {
     const c = createMockContext();
     const next = vi.fn();

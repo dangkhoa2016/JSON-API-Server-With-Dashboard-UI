@@ -90,6 +90,20 @@ describe("REST API - /api/:resource", () => {
       expect(body.data).toHaveLength(1);
       expect(body.data[0].name).toBe("Leanne Graham");
     });
+
+    it("escapes % in q search param", async () => {
+      const res = await app.request("/api/users?q=%25");
+      expect(res.status).toBe(200);
+      const body = await res.json() as JsonBody;
+      expect(body.data).toHaveLength(0);
+    });
+
+    it("escapes _ in q search param", async () => {
+      const res = await app.request("/api/users?q=_");
+      expect(res.status).toBe(200);
+      const body = await res.json() as JsonBody;
+      expect(body.data).toHaveLength(0);
+    });
   });
 
   describe("GET /api/:resource/:id", () => {
@@ -182,6 +196,17 @@ describe("REST API - /api/:resource", () => {
       });
       expect(res.status).toBe(404);
     });
+
+    it("rejects PUT request with body larger than 50MB", async () => {
+      const res = await app.request("/api/users/1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Content-Length": String(51 * 1024 * 1024) },
+        body: JSON.stringify({ name: "oversized" }),
+      });
+      expect(res.status).toBe(413);
+      const body = await res.json() as JsonBody;
+      expect(body.error).toBe("Request body too large");
+    });
   });
 
   describe("PATCH /api/:resource/:id", () => {
@@ -213,6 +238,17 @@ describe("REST API - /api/:resource", () => {
         body: JSON.stringify({ name: "test" }),
       });
       expect(res.status).toBe(404);
+    });
+
+    it("rejects PATCH request with body larger than 50MB", async () => {
+      const res = await app.request("/api/users/1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Content-Length": String(51 * 1024 * 1024) },
+        body: JSON.stringify({ name: "oversized" }),
+      });
+      expect(res.status).toBe(413);
+      const body = await res.json() as JsonBody;
+      expect(body.error).toBe("Request body too large");
     });
   });
 

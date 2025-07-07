@@ -1,9 +1,6 @@
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
+import { fileURLToPath } from "node:url";
+import { getDb, type SeedDb } from "./config";
 import * as schema from "./schema";
-
-const client = createClient({ url: process.env.DATABASE_URL || "file:./local.db" });
-const db = drizzle(client, { schema });
 
 interface JsonUser {
   id: number; name: string; username: string; email: string;
@@ -16,7 +13,15 @@ interface JsonAlbum { id: number; userId: number; title: string; }
 interface JsonPhoto { id: number; albumId: number; title: string; url: string; thumbnailUrl: string; }
 interface JsonTodo { id: number; userId: number; title: string; completed: boolean; }
 
-export async function seedDatabase(dbInstance: ReturnType<typeof drizzle<typeof schema>>) {
+export type { SeedDb } from "./config";
+
+export async function seedDatabase(dbInstance: SeedDb) {
+  const existing = await dbInstance.select().from(schema.users).limit(1);
+  if (existing.length > 0) {
+    console.log("Database already seeded, skipping.");
+    return;
+  }
+
   const BASE = "https://jsonplaceholder.typicode.com";
 
   const seedUsers = await fetch(`${BASE}/users`).then((r) => r.json()) as JsonUser[];
@@ -62,8 +67,12 @@ export async function seedDatabase(dbInstance: ReturnType<typeof drizzle<typeof 
   console.log("Seeding complete!");
 }
 
-async function main() {
-  await seedDatabase(db);
-}
+const isMainModule =
+  process.argv[1] &&
+  process.argv[1].includes("db/seed") &&
+  fileURLToPath(import.meta.url) === process.argv[1];
 
-main().catch(console.error).finally(() => client.close());
+if (isMainModule) {
+  const db = getDb();
+  seedDatabase(db).catch(console.error);
+}
