@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   LayoutDashboard,
@@ -14,7 +14,28 @@ import {
   ExternalLink,
   Menu,
   X,
+  Sun,
+  Moon,
+  Monitor,
 } from '@lucide/vue'
+import { useTheme, type ThemeMode } from '@/composables/useTheme'
+
+const { theme, setTheme } = useTheme()
+
+const showThemeMenu = ref(false)
+
+const themeOptions: { mode: ThemeMode; icon: Component; label: string }[] = [
+  { mode: 'light', icon: Sun, label: 'Light' },
+  { mode: 'dark', icon: Moon, label: 'Dark' },
+  { mode: 'auto', icon: Monitor, label: 'Auto' },
+]
+
+const currentThemeIcon = computed(() => themeOptions.find((o) => o.mode === theme.value)!.icon)
+
+function selectTheme(mode: ThemeMode) {
+  setTheme(mode)
+  showThemeMenu.value = false
+}
 
 const route = useRoute()
 const sidebarOpen = ref(false)
@@ -30,6 +51,21 @@ watch(
 function closeSidebar() {
   sidebarOpen.value = false
 }
+
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (showThemeMenu.value && !target.closest('.theme-selector')) {
+    showThemeMenu.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', onClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onClickOutside)
+})
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -113,7 +149,35 @@ const navItems = [
       </nav>
 
       <!-- Footer -->
-      <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+      <div class="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+        <!-- Theme selector -->
+        <div class="relative theme-selector">
+          <button
+            class="cursor-pointer flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+            @click="showThemeMenu = !showThemeMenu"
+          >
+            <component :is="currentThemeIcon" class="w-4 h-4" />
+            <span class="capitalize">{{ theme }}</span>
+          </button>
+          <Transition name="dropdown">
+            <div
+              v-if="showThemeMenu"
+              class="absolute bottom-full left-0 mb-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden"
+            >
+              <button
+                v-for="opt in themeOptions"
+                :key="opt.mode"
+                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                :class="{ 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400': opt.mode === theme }"
+                @click="selectTheme(opt.mode)"
+              >
+                <component :is="opt.icon" class="w-4 h-4" />
+                {{ opt.label }}
+              </button>
+            </div>
+          </Transition>
+        </div>
+
         <a
           href="https://github.com/typicode/json-server"
           target="_blank"
@@ -143,5 +207,20 @@ const navItems = [
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.dropdown-enter-active {
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+.dropdown-leave-active {
+  transition: opacity 0.1s ease-in, transform 0.1s ease-in;
+}
+.dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 </style>
