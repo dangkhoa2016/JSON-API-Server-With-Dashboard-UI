@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import app from "../boot";
 import { getDb } from "../queries/connection";
 import { setupTestDatabase, seedTestData, clearTestDatabase } from "./helpers";
+import { createSession } from "../lib/adminAuth";
 
 type JsonBody = Record<string, unknown>;
 
@@ -290,6 +291,150 @@ describe("REST API - /api/:resource", () => {
       const body = await res.json() as JsonBody;
       expect(body.error).toBe("Request body too large");
     });
+  });
+});
+
+describe("Admin REST routes", () => {
+  it("POST /api/admin/auth/login returns not-configured when no admin creds", async () => {
+    const res = await app.request("/api/admin/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "admin", password: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body).toMatchObject({ ok: false, message: "Admin credentials not configured" });
+  });
+
+  it("GET /api/admin/settings returns empty array when no data", async () => {
+    const res = await app.request("/api/admin/settings");
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  it("GET /api/admin/settings/:key returns 404 for non-existent key", async () => {
+    const res = await app.request("/api/admin/settings/NONEXISTENT_KEY");
+    expect(res.status).toBe(404);
+    const body = await res.json() as JsonBody;
+    expect(body.error).toBe("Not found");
+  });
+
+  it("PUT /api/admin/settings/:key returns unauthorized without auth", async () => {
+    const res = await app.request("/api/admin/settings/TEST_KEY", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: "test" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(false);
+  });
+
+  it("POST /api/admin/settings/reset/:key returns unauthorized without auth", async () => {
+    const res = await app.request("/api/admin/settings/reset/TEST_KEY", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(false);
+  });
+
+  it("POST /api/admin/data/seed returns unauthorized without auth", async () => {
+    const res = await app.request("/api/admin/data/seed", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(false);
+  });
+
+  it("POST /api/admin/data/reset returns unauthorized without auth", async () => {
+    const res = await app.request("/api/admin/data/reset", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(false);
+  });
+
+  it("POST /api/admin/data/seed with valid token succeeds", async () => {
+    const token = createSession("admin");
+    const res = await app.request("/api/admin/data/seed", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(true);
+  });
+
+  it("POST /api/admin/data/reset with valid token succeeds", async () => {
+    const token = createSession("admin");
+    const res = await app.request("/api/admin/data/reset", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(true);
+  });
+
+  it("GET /api/admin/settings/:key returns setting when it exists", async () => {
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public)
+      VALUES ('SITE_NAME', 'My Site', 'string', 'Site Name', 'Site name', 'general', 1)`);
+    const res = await app.request("/api/admin/settings/SITE_NAME");
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.key).toBe("SITE_NAME");
+    expect(body.value).toBe("My Site");
+  });
+
+  it("PUT /api/admin/settings/:key with valid token updates a setting", async () => {
+    const token = createSession("admin");
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public)
+      VALUES ('TEST_SETTING', 'initial', 'string', 'Test', 'Test setting', 'general', 0)`);
+
+    const res = await app.request("/api/admin/settings/TEST_SETTING", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ value: "updated" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(true);
+  });
+
+  it("POST /api/admin/settings/reset/:key with valid token resets a setting", async () => {
+    const token = createSession("admin");
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public)
+      VALUES ('DEBUG_SQL', '0', 'string', 'Debug SQL', 'Debug SQL queries', 'general', 0)`);
+
+    const res = await app.request("/api/admin/settings/reset/DEBUG_SQL", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body.ok).toBe(true);
+  });
+
+  it("GET /api/counts returns counts", async () => {
+    const res = await app.request("/api/counts");
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(body).toHaveProperty("users");
+    expect(body).toHaveProperty("posts");
+    expect(body).toHaveProperty("comments");
+    expect(body).toHaveProperty("albums");
+    expect(body).toHaveProperty("photos");
+    expect(body).toHaveProperty("todos");
+  });
+
+  it("GET /api/feature-cards returns feature cards", async () => {
+    const res = await app.request("/api/feature-cards");
+    expect(res.status).toBe(200);
+    const body = await res.json() as JsonBody;
+    expect(Array.isArray(body)).toBe(true);
   });
 });
 

@@ -9,9 +9,14 @@ interface Field {
   required?: boolean
 }
 
+interface TableItem {
+  id: number;
+  [key: string]: unknown;
+}
+
 const props = defineProps<{
   fields: Field[]
-  items: any[]
+  items: TableItem[]
   isLoading: boolean
   title: string
   page: number
@@ -22,7 +27,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  edit: [item: any]
+  edit: [item: TableItem]
   delete: [id: number]
   'update:page': [page: number]
   'update:sort': [field: string, order: 'asc' | 'desc']
@@ -34,10 +39,11 @@ function hasCellSlot(key: string): boolean {
   return !!slots[`cell-${key}`]
 }
 
-function formatValue(item: any, field: Field): string {
-  if (item[field.key] === null || item[field.key] === undefined) return '\u2014'
-  if (field.type === 'boolean') return item[field.key] ? 'Yes' : 'No'
-  return String(item[field.key])
+function formatValue(item: TableItem, field: Field): string {
+  const val = item[field.key]
+  if (val === null || val === undefined) return '\u2014'
+  if (field.type === 'boolean') return val ? 'Yes' : 'No'
+  return String(val)
 }
 
 const displayFields = computed(() => props.fields.slice(0, 4))
@@ -124,9 +130,9 @@ const visiblePages = computed(() => {
     <div v-else class="overflow-x-auto">
       <table class="w-full caption-bottom text-sm">
         <thead>
-          <tr class="border-b border-gray-200 dark:border-gray-700/60 bg-gray-50/80 dark:bg-gray-800/50">
+          <tr class="border-b border-gray-200 dark:border-gray-700/60 bg-muted/80 dark:bg-muted/50">
             <th
-              class="h-11 px-5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 w-16 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-150"
+              class="h-11 px-5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 w-16 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-150 whitespace-nowrap"
               @click="handleSort('id')"
             >
               <div class="inline-flex items-center gap-1">
@@ -137,7 +143,7 @@ const visiblePages = computed(() => {
               <th
                 v-for="f in displayFields"
                 :key="f.key"
-                class="h-11 px-5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-150"
+                class="h-11 px-5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-150 whitespace-nowrap"
                 @click="handleSort(f.key)"
               >
                 <div class="inline-flex items-center gap-1">
@@ -145,7 +151,7 @@ const visiblePages = computed(() => {
                   <component :is="sortIcon(f.key)" class="size-3.5" />
                 </div>
               </th>
-            <th class="h-11 px-5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 w-24">Actions</th>
+            <th class="h-11 px-5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 w-24 whitespace-nowrap">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-gray-700/40">
@@ -156,7 +162,7 @@ const visiblePages = computed(() => {
               'transition-colors duration-150',
               index % 2 === 0
                 ? 'bg-white dark:bg-gray-800/40'
-                : 'bg-gray-50/50 dark:bg-gray-800/20',
+                : 'bg-muted/50 dark:bg-muted/20',
               'hover:bg-blue-50/60 dark:hover:bg-blue-900/10',
             ]"
           >
@@ -220,7 +226,7 @@ const visiblePages = computed(() => {
       </table>
 
       <!-- Pagination footer -->
-      <div class="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-gray-700/40 bg-gray-50/50 dark:bg-gray-800/30">
+      <div class="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-gray-700/40 bg-muted/50 dark:bg-muted/30">
         <p class="text-xs text-gray-500 dark:text-gray-400">
           Showing
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ startRow }}</span>

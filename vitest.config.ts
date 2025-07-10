@@ -29,6 +29,7 @@ export default defineConfig({
         "db/migrations/**",
         "db/seed.ts",
         "db/seed-settings.ts",
+        "db/seed-admin.ts",
         "web/__tests__/**",
         "web/main.ts",
         "web/App.vue",

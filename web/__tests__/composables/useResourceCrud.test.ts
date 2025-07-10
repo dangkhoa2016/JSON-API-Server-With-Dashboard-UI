@@ -22,6 +22,16 @@ vi.mock('@/providers/trpc', () => ({
         update: { useMutation: () => ({ mutate: mockMutate, isPending: { value: false } }) },
         delete: { useMutation: () => ({ mutate: mockMutate, isPending: { value: false } }) },
       },
+      users: {
+        list: { useQuery: (_input: any, opts?: any) => {
+          opts?.placeholderData?.(null)
+          void opts?.queryKey?.value
+          return { data: { value: { data: [] } }, isLoading: { value: false }, refetch: mockRefetch }
+        }},
+        create: { useMutation: () => ({ mutate: mockMutate, isPending: { value: false } }) },
+        update: { useMutation: () => ({ mutate: mockMutate, isPending: { value: false } }) },
+        delete: { useMutation: () => ({ mutate: mockMutate, isPending: { value: false } }) },
+      },
     },
   },
   trpcClient: { query: vi.fn() },
@@ -123,5 +133,33 @@ describe('useResourceCrud', () => {
   it('handleSort does not throw', () => {
     const crud = useResourceCrud('albums')
     expect(() => crud.handleSort('id', 'desc')).not.toThrow()
+  })
+
+  it('supports users resource with correct labels', () => {
+    const crud = useResourceCrud('users')
+    expect(crud.perPage).toBe(25)
+    crud.handleCreate({ name: 'Alice' })
+    expect(mockMutate).toHaveBeenCalled()
+    expect(toastSuccess).toHaveBeenCalledWith('Users', { description: 'User created successfully.' })
+  })
+
+  it('handleUpdate onSuccess for users resource', () => {
+    const crud = useResourceCrud('users')
+    crud.handleUpdate(1, { name: 'Updated' })
+    expect(mockRefetch).toHaveBeenCalled()
+    expect(toastSuccess).toHaveBeenCalledWith('Users', { description: 'User updated successfully.' })
+  })
+
+  it('handleDelete onSuccess for users resource', () => {
+    const crud = useResourceCrud('users')
+    crud.handleDelete(5)
+    expect(mockRefetch).toHaveBeenCalled()
+    expect(toastSuccess).toHaveBeenCalledWith('Users', { description: 'User deleted successfully.' })
+  })
+
+  it('handleSearch for users resource', () => {
+    const crud = useResourceCrud('users')
+    crud.handleSearch('john')
+    expect(crud.page.value).toBe(1)
   })
 })

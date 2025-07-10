@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { trpc } from '@/providers/trpc'
 import ResourcePage from '@/components/ResourcePage.vue'
+import { useResourceCrud } from '@/composables/useResourceCrud'
 import Button from '@/components/ui/Button.vue'
 import Label from '@/components/ui/Label.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import { Users } from '@lucide/vue'
-import { toast } from 'vue-sonner'
 import { tryParseJson } from '@/lib/utils'
 
 const fields = [
@@ -19,71 +18,9 @@ const fields = [
   { key: 'company', label: 'Company', type: 'text' as const },
 ]
 
-const title = 'Users'
-const page = ref(1)
-const perPage = 25
-const searchQuery = ref<string | undefined>(undefined)
-const sortField = ref<string | undefined>(undefined)
-const sortOrder = ref<'asc' | 'desc'>('asc')
-
-const list = trpc.json.users.list.useQuery(
-  { filters: {}, limit: perPage, page, q: searchQuery, sort: sortField, order: sortOrder },
-  {
-    /* v8 ignore next */
-    placeholderData: (prev) => prev,
-    /* v8 ignore next */
-    queryKey: computed(() => [{ subsystem: "trpc", path: "json.users.list", page: page.value, filters: {}, q: searchQuery.value, sort: sortField.value, order: sortOrder.value }]),
-  },
-)
-const create = trpc.json.users.create.useMutation()
-const update = trpc.json.users.update.useMutation()
-const del = trpc.json.users.delete.useMutation()
-
-function handleCreate(data: Record<string, unknown>) {
-  create.mutate(data as never, {
-    onSuccess: () => {
-      list.refetch()
-      toast.success(title, { description: 'User created successfully.' })
-    },
-    onError: (err) => {
-      toast.error('Failed', { description: err.message })
-    },
-  })
-}
-
-function handleUpdate(id: number, data: Record<string, unknown>) {
-  update.mutate({ id, data } as never, {
-    onSuccess: () => {
-      list.refetch()
-      toast.success(title, { description: 'User updated successfully.' })
-    },
-    onError: (err) => {
-      toast.error('Failed', { description: err.message })
-    },
-  })
-}
-
-function handleDelete(id: number) {
-  del.mutate({ id }, {
-    onSuccess: () => {
-      list.refetch()
-      toast.success(title, { description: 'User deleted successfully.' })
-    },
-    onError: (err) => {
-      toast.error('Failed', { description: err.message })
-    },
-  })
-}
-
-function handleSearch(q: string) {
-  searchQuery.value = q || undefined
-  page.value = 1
-}
-
-function handleSort(field: string | undefined, order: 'asc' | 'desc') {
-  sortField.value = field
-  sortOrder.value = order
-}
+const crud = useResourceCrud('users')
+defineExpose({ searchQuery: crud.searchQuery, sortField: crud.sortField, sortOrder: crud.sortOrder })
+const { list, create, update, handleCreate, handleUpdate, handleDelete, handleSearch, handleSort, page, perPage } = crud
 
 const formattedItems = computed(() => {
   if (!list.data.value?.data) return []

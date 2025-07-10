@@ -194,6 +194,13 @@ describe('ResourceTable.vue', () => {
     expect(vm.formatValue({ title: undefined }, fields[0])).toBe('\u2014')
   })
 
+  it('formatValue returns string representation for text fields', () => {
+    const wrapper = createWrapper()
+    const vm = wrapper.vm as any
+    expect(vm.formatValue({ title: 'Hello World' }, fields[0])).toBe('Hello World')
+    expect(vm.formatValue({ title: 123 }, fields[0])).toBe('123')
+  })
+
   it('formatValue handles boolean', () => {
     const wrapper = createWrapper()
     const vm = wrapper.vm as any
