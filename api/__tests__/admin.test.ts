@@ -102,6 +102,25 @@ describe("admin.settings", () => {
     expect(result!.value).toBe("********");
   });
 
+  it("reveal returns actual value for sensitive key when authenticated", async () => {
+    const caller = createAdminCaller();
+    const result = await caller.admin.settings.reveal({ key: "APP_SECRET" });
+    expect(result).not.toBeNull();
+    expect(result!.key).toBe("APP_SECRET");
+    expect(result!.value).toBe("secret123");
+  });
+
+  it("reveal returns null for non-existent key", async () => {
+    const caller = createAdminCaller();
+    const result = await caller.admin.settings.reveal({ key: "NON_EXISTENT" });
+    expect(result).toBeNull();
+  });
+
+  it("reveal rejects unauthenticated requests", async () => {
+    await expect(createCaller().admin.settings.reveal({ key: "APP_SECRET" }))
+      .rejects.toThrow("Admin authentication required");
+  });
+
   it("update modifies an existing setting", async () => {
     const caller = createAdminCaller();
     const result = await caller.admin.settings.update({ key: "REDIS_ENABLED", value: "true" });

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { Settings as SettingsIcon, Loader2, LogIn, LogOut, Save, RotateCcw, Eye, EyeOff, Trash2, AlertTriangle, Pencil } from '@lucide/vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Label from '@/components/ui/Label.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import { trpc } from '@/providers/trpc'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useAuth } from '@/composables/useAuth'
 import { toast } from 'vue-sonner'
 
@@ -16,11 +17,22 @@ const loginUsername = ref('')
 const loginPassword = ref('')
 const loginError = ref('')
 const visibleKeys = ref<string[]>([])
+const revealedValues = ref<Record<string, string>>({})
 
-function toggleVisible(key: string) {
+const revealMutation = trpc.admin.settings.reveal.useMutation()
+
+async function toggleVisible(key: string) {
   const idx = visibleKeys.value.indexOf(key)
   if (idx === -1) {
-    visibleKeys.value.push(key)
+    try {
+      const result = await revealMutation.mutateAsync({ key })
+      if (result) {
+        revealedValues.value[key] = result.value
+      }
+      visibleKeys.value.push(key)
+    } catch {
+      toast.error('Failed to reveal setting value')
+    }
   } else {
     visibleKeys.value.splice(idx, 1)
   }
@@ -35,11 +47,20 @@ const settings = settingsQuery.data
 const isLoading = settingsQuery.isLoading
 const refetch = settingsQuery.refetch
 
+const queryClient = useQueryClient()
+
+const invalidateFeatureCards = () => {
+  queryClient.invalidateQueries({
+    queryKey: [{ subsystem: 'trpc', path: 'json.getFeatureCards', input: undefined }],
+  })
+}
+
 const updateMutation = trpc.admin.settings.update.useMutation({
   onSuccess: (result) => {
     if (result.ok) {
       toast.success('Setting updated')
       refetch()
+      invalidateFeatureCards()
     } else {
       toast.error(result.message ?? 'Failed to update setting')
     }
@@ -54,6 +75,7 @@ const resetMutation = trpc.admin.settings.reset.useMutation({
     if (result.ok) {
       toast.success('Setting reset to default')
       refetch()
+      invalidateFeatureCards()
     } else {
       toast.error(result.message ?? 'Failed to reset setting')
     }
@@ -99,6 +121,10 @@ async function doLogin() {
 
 function startEdit(key: string, value: string) {
   editingValues.value[key] = value
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>(`[data-edit-key="${key}"]`)
+    el?.focus()
+  })
 }
 
 function cancelEdit(key: string) {
@@ -150,7 +176,7 @@ function doResetDatabase() {
           <Trash2 class="w-4 h-4" />
           Reset Database
         </Button>
-        <Button variant="secondary" size="sm" @click="doLogout">
+        <Button variant="outline" size="sm" class="dark:border-gray-500 dark:text-gray-200 dark:hover:bg-gray-700" @click="doLogout">
           <LogOut class="w-4 h-4" />
           Logout
         </Button>
@@ -191,12 +217,13 @@ function doResetDatabase() {
             </div>
             <p v-if="setting.description" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ setting.description }}</p>
             <div class="mt-2">
-              <div v-if="editingValues[setting.key] !== undefined && isAdmin" class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 -mx-1">
+              <div v-if="editingValues[setting.key] !== undefined && isAdmin" class="bg-muted dark:bg-muted/50 rounded-lg p-3 -mx-1">
                 <div class="flex items-center gap-2">
                   <div class="relative flex-1">
                     <Input
                       :type="!setting.isPublic ? (isVisible(setting.key) ? 'text' : 'password') : 'text'"
                       v-model="editingValues[setting.key]"
+                      :data-edit-key="setting.key"
                       class="w-full pr-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500"
                     />
                     <Button
@@ -225,7 +252,7 @@ function doResetDatabase() {
                   class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-100 border border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors flex-1 truncate"
                   @click="startEdit(setting.key, setting.value)"
                 >
-                  {{ !setting.isPublic && !isVisible(setting.key) ? '••••••••' : (setting.value || '\u00a0') }}
+                  {{ !setting.isPublic && !isVisible(setting.key) ? '••••••••' : (revealedValues[setting.key] || setting.value || '\u00a0') }}
                 </code>
                 <button
                   v-if="!setting.isPublic"
@@ -270,14 +297,14 @@ function doResetDatabase() {
 
     <!-- Reset Database Confirm Dialog -->
     <Dialog v-model="showResetConfirmDialog">
-      <div class="space-y-4 text-foreground">
+      <div class="space-y-4">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
             <AlertTriangle class="w-6 h-6 text-red-600 dark:text-red-400" />
           </div>
           <div>
-            <h2 class="text-lg font-semibold text-foreground">Reset Database</h2>
-            <p class="text-sm text-foreground">This action will clear all data and re-seed from the API.</p>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Reset Database</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400">This action will clear all data and re-seed from the API.</p>
           </div>
         </div>
 
@@ -288,7 +315,7 @@ function doResetDatabase() {
         </div>
 
         <div class="flex items-center justify-end gap-2">
-          <Button variant="ghost" @click="showResetConfirmDialog = false" :disabled="resetDatabaseMutation.isPending.value">Cancel</Button>
+          <Button variant="outline" @click="showResetConfirmDialog = false" :disabled="resetDatabaseMutation.isPending.value">Cancel</Button>
           <Button variant="default" class="bg-red-600 hover:bg-red-700 text-white" @click="doResetDatabase" :disabled="resetDatabaseMutation.isPending.value">
             <Loader2 v-if="resetDatabaseMutation.isPending.value" class="w-4 h-4 animate-spin" />
             <Trash2 v-else class="w-4 h-4" />
@@ -325,7 +352,7 @@ function doResetDatabase() {
         <p v-if="loginError" class="text-sm text-red-600 dark:text-red-400">{{ loginError }}</p>
 
         <div class="flex items-center justify-end gap-2">
-          <Button variant="ghost" @click="showLoginDialog = false">Cancel</Button>
+          <Button variant="outline" @click="showLoginDialog = false">Cancel</Button>
           <Button @click="doLogin">Login</Button>
         </div>
       </div>

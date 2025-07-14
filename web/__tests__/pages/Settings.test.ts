@@ -37,13 +37,14 @@ const queryState = vi.hoisted(() => ({
   isLoading: false,
 }))
 
-const { updateMutate, resetMutate, resetDbMutate, refetchFn, mutationOpts, isResetDbPending } = vi.hoisted(() => {
-  const opts: any = { update: null, reset: null, resetDb: null }
+const { updateMutate, resetMutate, resetDbMutate, revealMutateAsync, refetchFn, mutationOpts, isResetDbPending } = vi.hoisted(() => {
+  const opts: any = { update: null, reset: null, resetDb: null, reveal: null }
   const resetDbPending = { __v_isRef: true, value: false }
   return {
     updateMutate: vi.fn(),
     resetMutate: vi.fn(),
     resetDbMutate: vi.fn(),
+    revealMutateAsync: vi.fn().mockResolvedValue({ value: 'revealed-value' }),
     refetchFn: vi.fn(),
     mutationOpts: opts,
     isResetDbPending: resetDbPending,
@@ -63,6 +64,7 @@ vi.mock('@/providers/trpc', () => {
           list: { useQuery: () => ({ data: { __v_isRef: true, value: queryState.data }, isLoading: queryState.isLoading, refetch: refetchFn }) },
           update: { useMutation: (opts: any) => { mutationOpts.update = opts; return { mutate: updateMutate, isPending: false } } },
           reset: { useMutation: (opts: any) => { mutationOpts.reset = opts; return { mutate: resetMutate, isPending: false } } },
+          reveal: { useMutation: () => ({ mutateAsync: revealMutateAsync, isPending: false }) },
         },
         data: {
           resetDatabase: { useMutation: (opts: any) => { mutationOpts.resetDb = opts; return { mutate: resetDbMutate, isPending: isResetDbPending } } },
@@ -89,6 +91,8 @@ describe('Settings.vue', () => {
     updateMutate.mockReset()
     resetMutate.mockReset()
     resetDbMutate.mockReset()
+    revealMutateAsync.mockReset()
+    revealMutateAsync.mockResolvedValue({ value: 'revealed-value' })
     refetchFn.mockReset()
     mutationOpts.update = null
     mutationOpts.reset = null
@@ -414,6 +418,7 @@ describe('Settings.vue', () => {
           EyeOff: iconStub,
           Trash2: iconStub,
           AlertTriangle: iconStub,
+          Pencil: iconStub,
           ...uiStubs,
         },
       },
@@ -813,6 +818,7 @@ describe('Settings.vue', () => {
     queryState.data = [
       { key: 'EMPTY_SECRET', value: '', type: 'string', group: 'general', isPublic: false },
     ]
+    revealMutateAsync.mockResolvedValue({ value: '' })
     const wrapper = createMountWrapper({ authenticated: true, admin: true })
     await wrapper.vm.$nextTick()
     const eyeBtn = wrapper.find('button[title="Show value"]')
@@ -821,5 +827,32 @@ describe('Settings.vue', () => {
     const hideBtn = wrapper.find('button[title="Hide value"]')
     expect(hideBtn.exists()).toBe(true)
     expect(wrapper.html()).toContain('&nbsp;')
+  })
+
+  it('mount: shows error toast when reveal fails', async () => {
+    queryState.data = [
+      { key: 'FAIL_REVEAL', value: 'secret', type: 'string', group: 'general', isPublic: false },
+    ]
+    revealMutateAsync.mockRejectedValue(new Error('Reveal failed'))
+    const wrapper = createMountWrapper({ authenticated: true, admin: true })
+    await wrapper.vm.$nextTick()
+    const eyeBtn = wrapper.find('button[title="Show value"]')
+    await eyeBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(toastError).toHaveBeenCalledWith('Failed to reveal setting value')
+    expect((wrapper.vm as any).visibleKeys).toEqual([])
+  })
+
+  it('mount: reveal returning null does not crash', async () => {
+    queryState.data = [
+      { key: 'NULL_REVEAL', value: null, type: 'string', group: 'general', isPublic: false },
+    ]
+    revealMutateAsync.mockResolvedValue(null as any)
+    const wrapper = createMountWrapper({ authenticated: true, admin: true })
+    await wrapper.vm.$nextTick()
+    const eyeBtn = wrapper.find('button[title="Show value"]')
+    await eyeBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect((wrapper.vm as any).visibleKeys).toContain('NULL_REVEAL')
   })
 })

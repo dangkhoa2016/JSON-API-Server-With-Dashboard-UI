@@ -121,6 +121,18 @@ export const adminRouter = createRouter({
         await db.update(schema.settings).set({ value: envValue }).where(eq(schema.settings.key, input.key)).run();
         return { ok: true };
       }),
+
+    reveal: adminQuery
+      .input(z.object({ key: z.string() }))
+      .query(async ({ input }) => {
+        const db = getDb();
+        const setting = await db.select().from(schema.settings)
+          .where(eq(schema.settings.key, input.key)).get();
+        if (!setting) {
+          return null;
+        }
+        return { key: setting.key, value: setting.value };
+      }),
   }),
 
   data: createRouter({
