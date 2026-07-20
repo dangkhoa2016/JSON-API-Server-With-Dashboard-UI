@@ -44,8 +44,11 @@ export function useResourceCrud(resource: ResourceName, opts?: { perPage?: numbe
 
   const { title, singular } = labels[resource]
 
+  type CreateInput = Parameters<Api['create']['mutate']>[0]
+  type UpdateInput = Parameters<Api['update']['mutate']>[0]
+
   function handleCreate(data: Record<string, unknown>) {
-    create.mutate(data as never, {
+    create.mutate(data as CreateInput, {
       onSuccess: () => {
         list.refetch()
         toast.success(title, { description: `${singular} created successfully.` })
@@ -57,7 +60,7 @@ export function useResourceCrud(resource: ResourceName, opts?: { perPage?: numbe
   }
 
   function handleUpdate(id: number, data: Record<string, unknown>) {
-    update.mutate({ id, data } as never, {
+    update.mutate({ id, data } as UpdateInput, {
       onSuccess: () => {
         list.refetch()
         toast.success(title, { description: `${singular} updated successfully.` })

@@ -12,8 +12,6 @@ export const VALID_RESOURCES = [
   "users", "posts", "comments", "albums", "photos", "todos",
 ] as const;
 
-export type ResourceCounts = Record<typeof VALID_RESOURCES[number], number>
-
 // Helper to build cache key
 function cacheKey(resource: string, query: string, id?: string | number): string {
   if (id !== undefined) return `cache:${resource}:${id}`;
@@ -38,17 +36,18 @@ async function tryCache<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
 
 // Build where conditions from query params
 function buildWhereConditions(
-  table: Record<string, any>,
+  table: AnySQLiteTable,
   filters: Record<string, string>
-): any[] {
-  const conditions: any[] = [];
+): SQL[] {
+  const conditions: SQL[] = [];
   for (const [key, value] of Object.entries(filters)) {
     if (key === "_sort" || key === "_order" || key === "_limit" || key === "_page" || key === "q") continue;
-    if (!table[key]) continue;
+    const column = (table as Record<string, unknown>)[key];
+    if (!column) continue;
     if (typeof value === "string" && value.includes("*")) {
-      conditions.push(like(table[key], value.replace(/\*/g, "%")));
+      conditions.push(like(column as never, value.replace(/\*/g, "%")));
     } else {
-      conditions.push(eq(table[key], isNaN(Number(value)) ? value : Number(value)));
+      conditions.push(eq(column as never, isNaN(Number(value)) ? value : Number(value)));
     }
   }
   return conditions;
@@ -57,8 +56,8 @@ function buildWhereConditions(
 // Generic list handler
 async function handleList<T>(
   resource: string,
-  table: any,
-  input: { filters: Record<string, any>; sort?: string; order?: string; limit?: number; page?: number; q?: string },
+  table: AnySQLiteTable,
+  input: { filters: Record<string, string>; sort?: string; order?: string; limit?: number; page?: number; q?: string },
   searchFields?: string[]
 ): Promise<{ data: T[]; total: number }> {
   const cacheK = cacheKey(resource, JSON.stringify(input));
@@ -70,22 +69,22 @@ async function handleList<T>(
     // Add full-text search if q is provided
     if (input.q && searchFields && searchFields.length > 0) {
       const escaped = input.q.replace(/[%_]/g, '\\$&');
-      const searchConditions = searchFields.map(f => like(table[f], `%${escaped}%`));
+      const searchConditions = searchFields.map(f => like((table as Record<string, unknown>)[f] as never, `%${escaped}%`));
       conditions.push(or(...searchConditions));
     }
     
     // Count query (with filters, no pagination/sorting)
-    let countQuery = db.select({ count: sql<number>`count(*)` }).from(table);
+    let countQuery = db.select({ count: sql<number>`count(*)` }).from(table).$dynamic();
     if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions)) as any;
+      countQuery = countQuery.where(and(...conditions));
     }
     const countResult = await countQuery;
     const total = Number(countResult[0].count);
     
     // Data query
-    let dataQuery = db.select().from(table);
+    let dataQuery = db.select().from(table).$dynamic();
     if (conditions.length > 0) {
-      dataQuery = dataQuery.where(and(...conditions)) as any;
+      dataQuery = dataQuery.where(and(...conditions));
     }
     
     // Sorting
@@ -95,11 +94,11 @@ async function handleList<T>(
       for (let i = 0; i < fields.length; i++) {
         const field = fields[i];
         const dir = (orders[i] || "asc").toLowerCase();
-        const column = table[field];
+        const column = (table as Record<string, unknown>)[field];
         if (column) {
           dataQuery = dataQuery.orderBy(
-            dir === "desc" ? desc(column) : asc(column)
-          ) as any;
+            dir === "desc" ? desc(column as never) : asc(column as never)
+          );
         }
       }
     }
@@ -107,7 +106,7 @@ async function handleList<T>(
     // Pagination
     if (input.limit) {
       const page = input.page || 1;
-      dataQuery = (dataQuery as any).limit(input.limit).offset((page - 1) * input.limit);
+      dataQuery = dataQuery.limit(input.limit).offset((page - 1) * input.limit);
     }
     
     const data = await dataQuery;
@@ -116,7 +115,7 @@ async function handleList<T>(
 }
 
 // Generic count
-async function handleCount(resource: string, table: any): Promise<number> {
+async function handleCount(resource: string, table: AnySQLiteTable): Promise<number> {
   const cacheK = `cache:${resource}:count`;
   return tryCache<number>(cacheK, async () => {
     const db = getDb();
@@ -126,7 +125,7 @@ async function handleCount(resource: string, table: any): Promise<number> {
 }
 
 // Generic get by id
-async function handleGetById<T>(resource: string, table: any, id: number): Promise<T | null> {
+async function handleGetById<T>(resource: string, table: AnySQLiteTable, id: number): Promise<T | null> {
   const cacheK = cacheKey(resource, '', id);
   return tryCache<T | null>(cacheK, async () => {
     const db = getDb();
@@ -136,19 +135,17 @@ async function handleGetById<T>(resource: string, table: any, id: number): Promi
 }
 
 // Generic create
-async function handleCreate<T>(resource: string, table: any, data: Record<string, any>): Promise<T> {
+async function handleCreate<T>(resource: string, table: AnySQLiteTable, data: Record<string, unknown>): Promise<T> {
   const db = getDb();
-  const result = await db.insert(table).values(data).returning({ id: table.id }) as any[];
+  const result = await db.insert(table).values(data).returning({ id: table.id }) as { id: number }[];
   const fullRecord = await handleGetById<T>(resource, table, result[0].id);
   await invalidateCache(`cache:${resource}:*`);
-  if (!fullRecord) {
-    throw new Error(`Failed to retrieve created record in ${resource}`);
-  }
+  if (!fullRecord) throw new Error(`Failed to retrieve created record in ${resource}`);
   return fullRecord;
 }
 
 // Generic update
-async function handleUpdate<T>(resource: string, table: any, id: number, data: Record<string, any>): Promise<T | null> {
+async function handleUpdate<T>(resource: string, table: AnySQLiteTable, id: number, data: Record<string, unknown>): Promise<T | null> {
   const db = getDb();
   await db.update(table).set(data).where(eq(table.id, id));
   const fullRecord = await handleGetById<T>(resource, table, id);
@@ -158,7 +155,7 @@ async function handleUpdate<T>(resource: string, table: any, id: number, data: R
 }
 
 // Generic delete
-async function handleDelete(resource: string, table: any, id: number): Promise<boolean> {
+async function handleDelete(resource: string, table: AnySQLiteTable, id: number): Promise<boolean> {
   const db = getDb();
   await db.delete(table).where(eq(table.id, id));
   await invalidateCache(`cache:${resource}:*`);
@@ -175,21 +172,23 @@ const listInputSchema = z.object({
   q: z.string().optional(),
 });
 
-function serializeUser(input: Record<string, any>): Record<string, any> {
+function serializeUser(input: Record<string, unknown>): Record<string, unknown> {
   const data = { ...input };
   if (data.address && typeof data.address === "object") data.address = JSON.stringify(data.address);
   if (data.company && typeof data.company === "object") data.company = JSON.stringify(data.company);
   return data;
 }
 
-function deserializeUser(user: any): any {
+function deserializeUser(user: User | null): User | null {
   if (!user) return user;
   return {
     ...user,
-    address: typeof user.address === "string" ? JSON.parse(user.address) : user.address,
-    company: typeof user.company === "string" ? JSON.parse(user.company) : user.company,
+    address: typeof user.address === "string" ? JSON.parse(user.address) as string : user.address,
+    company: typeof user.company === "string" ? JSON.parse(user.company) as string : user.company,
   };
 }
+
+export type ResourceCounts = Record<typeof VALID_RESOURCES[number], number>
 
 export const jsonServerRouter = createRouter({
   getCounts: publicQuery.query(async () => {
@@ -262,6 +261,7 @@ export const jsonServerRouter = createRouter({
         })
       : defaultCards;
 
+    // Collect {{KEY}} references from card labels/descriptions
     const keyPattern = /\{\{(\w+)\}\}/g;
     const referenced = new Set<string>();
     for (const card of raw) {
@@ -273,6 +273,7 @@ export const jsonServerRouter = createRouter({
       }
     }
 
+    // Ensure health-check keys are fetched even if not mentioned in descriptions
     for (const card of raw) {
       if (card.key === "feature_card_redis") referenced.add("REDIS_ENABLED");
       else if (card.key === "feature_card_ratelimit") referenced.add("RATE_LIMIT_ENABLED");

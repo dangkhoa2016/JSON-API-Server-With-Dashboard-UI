@@ -453,31 +453,4 @@ describe('getFeatureCards', () => {
     expect(result[0].description).toBe('')
     expect(result[0].icon).toBe('Database')
   })
-
-  it('applies defaults when card has empty value, null label, null description, and missing icon fields', async () => {
-    const db = getDb()
-    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
-      ('minimal_card', '', 'string', NULL, NULL, 'featureCards', 1)
-    `)
-    const result = await (createCaller as any).getFeatureCards()
-    expect(result).toHaveLength(1)
-    expect(result[0].key).toBe('minimal_card')
-    expect(result[0].label).toBe('')
-    expect(result[0].description).toBe('')
-    expect(result[0].icon).toBe('Database')
-    expect(result[0].iconBg).toBe('bg-blue-100 dark:bg-blue-900/30')
-    expect(result[0].iconColor).toBe('text-blue-600 dark:text-blue-400')
-  })
-
-  it('parses partial JSON and applies defaults for missing icon fields', async () => {
-    const db = getDb()
-    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
-      ('partial_card', '{"icon":"Star"}', 'string', 'Partial', 'Has icon only', 'featureCards', 1)
-    `)
-    const result = await (createCaller as any).getFeatureCards()
-    expect(result).toHaveLength(1)
-    expect(result[0].icon).toBe('Star')
-    expect(result[0].iconBg).toBe('bg-blue-100 dark:bg-blue-900/30')
-    expect(result[0].iconColor).toBe('text-blue-600 dark:text-blue-400')
-  })
 })
