@@ -1,0 +1,4 @@
+yarn commitlint --edit "$1"
+
+# Run commit message policy check
+node scripts/check-commit-message.mjs "$1"
