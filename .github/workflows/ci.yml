@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22, 24, 26]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "yarn"
+
+      - run: yarn install --frozen-lockfile
+
+      - run: yarn check
+
+      - run: yarn test:coverage
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-report-${{ matrix.node-version }}
+          path: coverage/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: coverage
+          flags: node-${{ matrix.node-version }}
+          fail_ci_if_error: false
+
+  commit-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: "yarn"
+      - run: yarn install --frozen-lockfile
+      - name: Check commit message
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            for commit in $(git log --format='%H' origin/${{ github.base_ref }}..HEAD); do
+              git log --format='%B' -1 "$commit" | node scripts/check-commit-message.mjs /dev/stdin
+            done
+          fi
+      - name: Check commit size
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            STRICT=true bash scripts/check-commit-size.sh "origin/${{ github.base_ref }}" HEAD
+          fi
+
+  container-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "yarn"
+
+      - run: yarn install --frozen-lockfile
+
+      - run: yarn build
+
+      - run: sh scripts/container-smoke-test.sh json-api-ci:smoke
