@@ -16,6 +16,7 @@ function parseIpv6(ip: string): Buffer {
   if (!/^[0-9a-fA-F:]+$/.test(ip)) throw new Error(`Invalid IPv6 address: ${ip}`);
   const hex = expandIpv6(ip);
   const bytes = hex.match(/.{1,2}/g)!.map((h) => parseInt(h, 16));
+  /* v8 ignore next -- hex characters are validated above, so NaN is impossible */
   if (bytes.some((b) => Number.isNaN(b))) throw new Error(`Invalid IPv6 address: ${ip}`);
   return Buffer.from(bytes);
 }

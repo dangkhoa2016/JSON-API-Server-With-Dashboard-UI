@@ -583,6 +583,14 @@ describe("expandIpv6", () => {
     expect(result).toHaveLength(32);
     expect(result).toBe("20010db885a3000000008a2e03707334");
   });
+
+  it("throws when :: leaves more than 8 groups", () => {
+    expect(() => expandIpv6("1:2:3:4:5:6:7:8::")).toThrow("Invalid IPv6 address");
+  });
+
+  it("throws when the group count is not 8", () => {
+    expect(() => expandIpv6("1:2:3:4:5:6:7")).toThrow("Invalid IPv6 address");
+  });
 });
 
 describe("createCidrMatcher", () => {
@@ -623,6 +631,22 @@ describe("createCidrMatcher", () => {
   it("rejects malformed addresses", () => {
     expect(() => createCidrMatcher("300.1.1.1/24")).toThrow();
     expect(() => createCidrMatcher("not-an-ip/24")).toThrow();
+  });
+
+  it("rejects IPv6 addresses with invalid characters", () => {
+    expect(() => createCidrMatcher("gg::1/128")).toThrow("Invalid IPv6 address");
+  });
+
+  it("uses default /32 mask for IPv4 CIDR without prefix", () => {
+    const matcher = createCidrMatcher("192.168.1.1");
+    expect(matcher("192.168.1.1")).toBe(true);
+    expect(matcher("192.168.1.2")).toBe(false);
+  });
+
+  it("uses default /128 mask for IPv6 CIDR without prefix", () => {
+    const matcher = createCidrMatcher("::1");
+    expect(matcher("::1")).toBe(true);
+    expect(matcher("::2")).toBe(false);
   });
 });
 
@@ -957,6 +981,25 @@ describe("rateLimitMiddleware (dynamic config from DB)", () => {
     } as any;
     const next = vi.fn();
     await rateLimitMiddleware(c, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to env.rateLimitEnabled when DB has no RATE_LIMIT_ENABLED key", async () => {
+    mockDb.all.mockResolvedValue([
+      { key: "RATE_LIMIT_MAX_REQUESTS", value: "10" },
+      { key: "RATE_LIMIT_WINDOW_MS", value: "60000" },
+    ]);
+
+    resetConfigCache();
+    const c = {
+      req: { path: "/api/users", header: () => null, method: "GET" },
+      header: vi.fn(),
+      json: vi.fn(),
+      env: {},
+    } as any;
+    const next = vi.fn();
+    await rateLimitMiddleware(c, next);
+    expect(c.header).toHaveBeenCalledWith("X-RateLimit-Limit", "10");
     expect(next).toHaveBeenCalledTimes(1);
   });
 
