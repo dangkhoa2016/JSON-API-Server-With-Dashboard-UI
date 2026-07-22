@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, publicQuery } from "../middleware";
-import { users, posts } from "@db/schema";
-import type { User, Post } from "@db/schema";
+import { users, posts, comments, albums, photos, todos } from "@db/schema";
+import type { User } from "@db/schema";
 import {
   listInputSchema,
   handleList,
@@ -11,10 +11,48 @@ import {
   handleUpdate,
   handleDelete,
 } from "./handlers";
+import { getFeatureCards } from "./featureCards";
 
 export const VALID_RESOURCES = [
   "users", "posts", "comments", "albums", "photos", "todos",
 ] as const;
+
+type ResourceTable = typeof users | typeof posts | typeof comments | typeof albums | typeof photos | typeof todos;
+
+interface ResourceConfig {
+  name: string;
+  table: ResourceTable;
+  searchFields: string[];
+  createSchema: z.ZodObject<z.ZodRawShape>;
+  updateSchema: z.ZodObject<z.ZodRawShape>;
+}
+
+function createCrudRoutes(config: ResourceConfig) {
+  const { name, table, searchFields, createSchema, updateSchema } = config;
+  return createRouter({
+    list: publicQuery
+      .input(listInputSchema)
+      .query(({ input }) => handleList(name, table, input, searchFields)),
+
+    count: publicQuery.query(() => handleCount(name, table)),
+
+    getById: publicQuery
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(({ input }) => handleGetById(name, table, input.id)),
+
+    create: publicQuery
+      .input(createSchema)
+      .mutation(({ input }) => handleCreate(name, table, input as Record<string, unknown>)),
+
+    update: publicQuery
+      .input(z.object({ id: z.number().int().positive(), data: updateSchema }))
+      .mutation(({ input }) => handleUpdate(name, table, input.id, input.data as Record<string, unknown>)),
+
+    delete: publicQuery
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => handleDelete(name, table, input.id)),
+  });
+}
 
 function serializeUser(input: Record<string, unknown>): Record<string, unknown> {
   const data = { ...input };
@@ -35,7 +73,21 @@ function deserializeUser(user: User | null): User | null {
 export type ResourceCounts = Record<typeof VALID_RESOURCES[number], number>
 
 export const jsonServerRouter = createRouter({
-  // ===== USERS =====
+  getCounts: publicQuery.query(async () => {
+    const [userCount, postCount, commentCount, albumCount, photoCount, todoCount] = await Promise.all([
+      handleCount("users", users),
+      handleCount("posts", posts),
+      handleCount("comments", comments),
+      handleCount("albums", albums),
+      handleCount("photos", photos),
+      handleCount("todos", todos),
+    ]);
+    return { users: userCount, posts: postCount, comments: commentCount, albums: albumCount, photos: photoCount, todos: todoCount } satisfies ResourceCounts;
+  }),
+
+  getFeatureCards: publicQuery.query(() => getFeatureCards()),
+
+  // ===== USERS (custom serialize/deserialize) =====
   users: createRouter({
     list: publicQuery
       .input(listInputSchema)
@@ -92,38 +144,37 @@ export const jsonServerRouter = createRouter({
   }),
 
   // ===== POSTS =====
-  posts: createRouter({
-    list: publicQuery
-      .input(listInputSchema)
-      .query(({ input }) => handleList<Post>("posts", posts, input, ["title", "body"])),
-    
-    count: publicQuery.query(() => handleCount("posts", posts)),
-    
-    getById: publicQuery
-      .input(z.object({ id: z.number().int().positive() }))
-      .query(({ input }) => handleGetById<Post>("posts", posts, input.id)),
-    
-    create: publicQuery
-      .input(z.object({
-        userId: z.number().int().positive(),
-        title: z.string().min(1),
-        body: z.string().min(1),
-      }))
-      .mutation(({ input }) => handleCreate<Post>("posts", posts, input)),
-    
-    update: publicQuery
-      .input(z.object({
-        id: z.number().int().positive(),
-        data: z.object({
-          userId: z.number().int().positive().optional(),
-          title: z.string().min(1).optional(),
-          body: z.string().min(1).optional(),
-        }),
-      }))
-      .mutation(({ input }) => handleUpdate<Post>("posts", posts, input.id, input.data)),
-    
-    delete: publicQuery
-      .input(z.object({ id: z.number().int().positive() }))
-      .mutation(({ input }) => handleDelete("posts", posts, input.id)),
+  posts: createCrudRoutes({
+    name: "posts", table: posts, searchFields: ["title", "body"],
+    createSchema: z.object({ userId: z.number().int().positive(), title: z.string().min(1), body: z.string().min(1) }),
+    updateSchema: z.object({ userId: z.number().int().positive().optional(), title: z.string().min(1).optional(), body: z.string().min(1).optional() }),
+  }),
+
+  // ===== COMMENTS =====
+  comments: createCrudRoutes({
+    name: "comments", table: comments, searchFields: ["name", "email", "body"],
+    createSchema: z.object({ postId: z.number().int().positive(), name: z.string().min(1), email: z.string().email(), body: z.string().min(1) }),
+    updateSchema: z.object({ postId: z.number().int().positive().optional(), name: z.string().min(1).optional(), email: z.string().email().optional(), body: z.string().min(1).optional() }),
+  }),
+
+  // ===== ALBUMS =====
+  albums: createCrudRoutes({
+    name: "albums", table: albums, searchFields: ["title"],
+    createSchema: z.object({ userId: z.number().int().positive(), title: z.string().min(1) }),
+    updateSchema: z.object({ userId: z.number().int().positive().optional(), title: z.string().min(1).optional() }),
+  }),
+
+  // ===== PHOTOS =====
+  photos: createCrudRoutes({
+    name: "photos", table: photos, searchFields: ["title", "url", "thumbnailUrl"],
+    createSchema: z.object({ albumId: z.number().int().positive(), title: z.string().min(1), url: z.string().url(), thumbnailUrl: z.string().url() }),
+    updateSchema: z.object({ albumId: z.number().int().positive().optional(), title: z.string().min(1).optional(), url: z.string().url().optional(), thumbnailUrl: z.string().url().optional() }),
+  }),
+
+  // ===== TODOS =====
+  todos: createCrudRoutes({
+    name: "todos", table: todos, searchFields: ["title"],
+    createSchema: z.object({ userId: z.number().int().positive(), title: z.string().min(1), completed: z.boolean().default(false) }),
+    updateSchema: z.object({ userId: z.number().int().positive().optional(), title: z.string().min(1).optional(), completed: z.boolean().optional() }),
   }),
 });
