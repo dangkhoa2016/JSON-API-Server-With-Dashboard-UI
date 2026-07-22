@@ -2,14 +2,22 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { createCallerFactory } from '@trpc/server/unstable-core-do-not-import'
 import { jsonServerRouter, VALID_RESOURCES } from '../jsonServerRouter'
 import { getDb } from '../queries/connection'
+import { handleCreate } from '../jsonServerRouter/handlers'
+import { users } from '@db/schema'
 import { sql } from 'drizzle-orm'
 import { getCache, setCache } from '../lib/redis'
+import { env } from '../lib/env'
 
 vi.mock('../lib/redis', () => ({
   getCache: vi.fn(),
   setCache: vi.fn(),
   invalidateCache: vi.fn(),
 }))
+
+vi.mock('../queries/connection', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../queries/connection')>()
+  return { ...mod, getDb: vi.fn(mod.getDb) }
+})
 
 vi.mock('../lib/env', () => ({
   env: {
@@ -208,6 +216,20 @@ describe('caching (mocked env + redis)', () => {
     expect(result.data).toEqual([])
     expect(vi.mocked(setCache)).toHaveBeenCalled()
   })
+
+  it('skips cache entirely when cache is disabled', async () => {
+    const original = env.cacheEnabled
+    env.cacheEnabled = false
+    try {
+      const r = createCaller.users as any
+      const result = await r.list({ filters: {} })
+      expect(result.data).toEqual([])
+      expect(vi.mocked(getCache)).not.toHaveBeenCalled()
+      expect(vi.mocked(setCache)).not.toHaveBeenCalled()
+    } finally {
+      env.cacheEnabled = original
+    }
+  })
 })
 
 describe('user serialization/deserialization', () => {
@@ -267,6 +289,30 @@ describe('user serialization/deserialization', () => {
 
     const list = await r.list({ filters: {} })
     expect(list.data).toContainEqual(expect.objectContaining({ address: rawAddress }))
+  })
+
+  it('keeps string address when JSON parses to a primitive', async () => {
+    const r = createCaller.users as any
+    const created = await r.create({
+      name: 'Primitive User',
+      email: 'primitive@test.com',
+      address: '123',
+    })
+
+    const user = await r.getById({ id: created.id })
+    expect(user.address).toBe('123')
+  })
+
+  it('keeps string address when JSON parses to null', async () => {
+    const r = createCaller.users as any
+    const created = await r.create({
+      name: 'Null User',
+      email: 'null@test.com',
+      address: 'null',
+    })
+
+    const user = await r.getById({ id: created.id })
+    expect(user.address).toBe('null')
   })
 })
 
@@ -346,6 +392,12 @@ describe('handler edge cases', () => {
     expect(result.data).toHaveLength(2)
   })
 
+  it('count returns 0 for empty table', async () => {
+    const r = createCaller.users as any
+    const count = await r.count()
+    expect(count).toBe(0)
+  })
+
   it('reserved filter keys are skipped in buildWhereConditions', async () => {
     const r = createCaller.users as any
     await r.create({ name: 'Alice', email: 'a@b.com' })
@@ -354,5 +406,61 @@ describe('handler edge cases', () => {
       filters: { _sort: 'name', _order: 'asc', _limit: '10', _page: '1', q: 'test', name: 'Alice' }
     })
     expect(result.data).toHaveLength(1)
+  })
+})
+
+describe('full-text search', () => {
+  beforeEach(async () => {
+    const db = getDb()
+    await db.run(sql`DELETE FROM posts`)
+  })
+
+  it('matches across configured search fields', async () => {
+    const r = createCaller.posts as any
+    await r.create({ userId: 1, title: 'Searchable Post', body: 'plain body' })
+    await r.create({ userId: 1, title: 'Other Post', body: 'unique body text' })
+    await r.create({ userId: 1, title: 'Unrelated', body: 'nothing' })
+
+    const byTitle = await r.list({ filters: {}, q: 'searchable' })
+    expect(byTitle.data).toHaveLength(1)
+    expect(byTitle.data[0].title).toBe('Searchable Post')
+
+    const byBody = await r.list({ filters: {}, q: 'unique' })
+    expect(byBody.data).toHaveLength(1)
+    expect(byBody.data[0].title).toBe('Other Post')
+  })
+
+  it('escapes LIKE wildcard characters in q', async () => {
+    const r = createCaller.posts as any
+    await r.create({ userId: 1, title: '100% Pure', body: 'body' })
+    await r.create({ userId: 1, title: 'Other', body: 'body' })
+
+    const result = await r.list({ filters: {}, q: '100%' })
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0].title).toBe('100% Pure')
+  })
+})
+
+describe('handler error handling', () => {
+  it('handleCreate throws when created record cannot be retrieved', async () => {
+    const fakeDb = {
+      insert: () => ({
+        values: () => ({
+          returning: async () => [{ id: 99999 }],
+        }),
+      }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [],
+          }),
+        }),
+      }),
+    }
+    vi.mocked(getDb).mockReturnValueOnce(fakeDb as any)
+
+    await expect(handleCreate('users', users, { name: 'Ghost' } as any)).rejects.toThrow(
+      'Failed to retrieve created record in users'
+    )
   })
 })
