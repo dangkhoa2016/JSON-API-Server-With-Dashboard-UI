@@ -17,9 +17,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx db/seed.ts",
-    "db:seed:settings": "tsx db/seed-settings.ts",
-    "db:seed:admin": "tsx db/seed-admin.ts",
+    "db:seed": "node db/seed.js",
+    "db:seed:settings": "node db/seed-settings.js",
+    "db:seed:admin": "node db/seed-admin.js",
     "prepare": "husky"
   },
   "dependencies": {
