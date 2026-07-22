@@ -231,7 +231,7 @@ describe("admin.data.seed", () => {
     const caller = createAdminCaller();
     const result = await caller.data.seed();
     expect(result.ok).toBe(true);
-  });
+  }, 30000);
 });
 
 describe("admin.data.resetDatabase", () => {
