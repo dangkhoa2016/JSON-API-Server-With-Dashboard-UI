@@ -20,6 +20,7 @@
     "db:seed": "node db/seed.js",
     "db:seed:settings": "node db/seed-settings.js",
     "db:seed:admin": "node db/seed-admin.js",
+    "db:inspect": "node scripts/inspect-db.js",
     "prepare": "husky"
   },
   "dependencies": {
