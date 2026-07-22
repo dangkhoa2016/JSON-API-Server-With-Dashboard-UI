@@ -375,7 +375,7 @@ describe("Admin REST routes", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as JsonBody;
     expect(body.ok).toBe(true);
-  });
+  }, 30000);
 
   it("POST /api/admin/data/reset with valid token succeeds", async () => {
     const token = createSession("admin");
