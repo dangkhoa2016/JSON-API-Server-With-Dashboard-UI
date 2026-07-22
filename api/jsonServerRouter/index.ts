@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, publicQuery } from "../middleware";
-import { users, posts } from "@db/schema";
-import type { User, Post } from "@db/schema";
+import { users, posts, comments, albums, photos, todos } from "@db/schema";
+import type { User } from "@db/schema";
 import {
   listInputSchema,
   handleList,
@@ -15,6 +15,61 @@ import {
 export const VALID_RESOURCES = [
   "users", "posts", "comments", "albums", "photos", "todos",
 ] as const;
+
+type ResourceTable =
+  | typeof users
+  | typeof posts
+  | typeof comments
+  | typeof albums
+  | typeof photos
+  | typeof todos;
+
+interface ResourceConfig<TTable extends ResourceTable> {
+  name: string;
+  table: TTable;
+  searchFields: string[];
+  createSchema: z.ZodObject<z.ZodRawShape>;
+  updateSchema: z.ZodObject<z.ZodRawShape>;
+}
+
+function createCrudRoutes<TTable extends ResourceTable>(
+  config: ResourceConfig<TTable>
+) {
+  const { name, table, searchFields, createSchema, updateSchema } = config;
+  type Row = TTable["$inferSelect"];
+  return createRouter({
+    list: publicQuery
+      .input(listInputSchema)
+      .query(({ input }) => handleList<Row>(name, table, input, searchFields)),
+
+    count: publicQuery.query(() => handleCount(name, table)),
+
+    getById: publicQuery
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(({ input }) => handleGetById<Row>(name, table, input.id)),
+
+    create: publicQuery
+      .input(createSchema)
+      .mutation(({ input }) =>
+        handleCreate<Row>(name, table, input as Record<string, unknown>)
+      ),
+
+    update: publicQuery
+      .input(z.object({ id: z.number().int().positive(), data: updateSchema }))
+      .mutation(({ input }) =>
+        handleUpdate<Row>(
+          name,
+          table,
+          input.id,
+          input.data as Record<string, unknown>
+        )
+      ),
+
+    delete: publicQuery
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => handleDelete(name, table, input.id)),
+  });
+}
 
 function serializeUser(input: Record<string, unknown>): Record<string, unknown> {
   const data = { ...input };
@@ -106,38 +161,19 @@ export const jsonServerRouter = createRouter({
   }),
 
   // ===== POSTS =====
-  posts: createRouter({
-    list: publicQuery
-      .input(listInputSchema)
-      .query(({ input }) => handleList<Post>("posts", posts, input, ["title", "body"])),
-
-    count: publicQuery.query(() => handleCount("posts", posts)),
-
-    getById: publicQuery
-      .input(z.object({ id: z.number().int().positive() }))
-      .query(({ input }) => handleGetById<Post>("posts", posts, input.id)),
-
-    create: publicQuery
-      .input(z.object({
-        userId: z.number().int().positive(),
-        title: z.string().min(1),
-        body: z.string().min(1),
-      }))
-      .mutation(({ input }) => handleCreate<Post>("posts", posts, input)),
-
-    update: publicQuery
-      .input(z.object({
-        id: z.number().int().positive(),
-        data: z.object({
-          userId: z.number().int().positive().optional(),
-          title: z.string().min(1).optional(),
-          body: z.string().min(1).optional(),
-        }),
-      }))
-      .mutation(({ input }) => handleUpdate<Post>("posts", posts, input.id, input.data)),
-
-    delete: publicQuery
-      .input(z.object({ id: z.number().int().positive() }))
-      .mutation(({ input }) => handleDelete("posts", posts, input.id)),
+  posts: createCrudRoutes({
+    name: "posts",
+    table: posts,
+    searchFields: ["title", "body"],
+    createSchema: z.object({
+      userId: z.number().int().positive(),
+      title: z.string().min(1),
+      body: z.string().min(1),
+    }),
+    updateSchema: z.object({
+      userId: z.number().int().positive().optional(),
+      title: z.string().min(1).optional(),
+      body: z.string().min(1).optional(),
+    }),
   }),
 });
