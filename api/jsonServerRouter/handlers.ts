@@ -103,6 +103,7 @@ export async function handleList<T>(
           sql`${columns[f]} LIKE ${sql.param(pattern)} ESCAPE ${sql.raw("'\\'")}`
       );
       const combined = or(...searchConditions);
+      /* v8 ignore next -- or() is truthy when searchFields is non-empty */
       if (combined) conditions.push(combined);
     }
 
