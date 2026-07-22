@@ -1,0 +1,30 @@
+# Choose ONE of the two options below (uncomment the one you want):
+#
+# Option A — pull pre-built image from GitHub Packages (no local build):
+#   image: ghcr.io/dangkhoa2016/json-api-server-with-dashboard-ui:latest
+#
+# Option B — build from local source (for development / custom builds):
+#   build: .
+#
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - APP_SECRET=${APP_SECRET:?APP_SECRET is required}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      - NODE_ENV=production
+      - DEBUG_SQL=false
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_MAX_REQUESTS=100
+      - RATE_LIMIT_WINDOW_MS=60000
+      - REDIS_ENABLED=false
+      - SKIP_SEED=${SKIP_SEED:-false}
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
