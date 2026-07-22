@@ -110,6 +110,15 @@ export async function seedTestData() {
       (2, 1, 'quis ut nam facilis et officia qui', 1),
       (3, 2, 'fugiat veniam minus', 0)
   `);
+
+  await db.run(sql`
+    INSERT INTO settings (key, value, type, label, description, "group", is_public)
+    VALUES
+      ('APP_NAME', 'TestApp', 'string', 'App Name', 'Application name', 'general', 1),
+      ('APP_SECRET', 'test-secret', 'string', 'App Secret', 'Application secret', 'security', 0),
+      ('ADMIN_USERNAME', 'admin', 'string', 'Admin Username', 'Admin login username', 'admin', 0),
+      ('ADMIN_PASSWORD_HASH', '$argon2id$v=19$m=19456,t=2,p=1$EqfwMgTuSVq3ynACPu3hRg$fk2SNU8k6dCpByI1F4I7VMxbH0DoilKjfkTp41E87g4', 'string', 'Admin Password', 'Hashed admin password', 'admin', 0)
+  `);
 }
 
 export async function clearTestDatabase() {
