@@ -11,9 +11,15 @@ import {
   handleUpdate,
   handleDelete,
 } from "./handlers";
+import { getFeatureCards } from "./featureCards";
 
 export const VALID_RESOURCES = [
-  "users", "posts", "comments", "albums", "photos", "todos",
+  "users",
+  "posts",
+  "comments",
+  "albums",
+  "photos",
+  "todos",
 ] as const;
 
 type ResourceTable =
@@ -71,17 +77,23 @@ function createCrudRoutes<TTable extends ResourceTable>(
   });
 }
 
-function serializeUser(input: Record<string, unknown>): Record<string, unknown> {
+function serializeUser(
+  input: Record<string, unknown>
+): Record<string, unknown> {
   const data = { ...input };
-  if (data.address && typeof data.address === "object") data.address = JSON.stringify(data.address);
-  if (data.company && typeof data.company === "object") data.company = JSON.stringify(data.company);
+  if (data.address && typeof data.address === "object")
+    data.address = JSON.stringify(data.address);
+  if (data.company && typeof data.company === "object")
+    data.company = JSON.stringify(data.company);
   return data;
 }
 
 function tryParseJson(value: string): string | object {
   try {
     const parsed: unknown = JSON.parse(value);
-    return typeof parsed === "object" && parsed !== null ? (parsed as object) : value;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as object)
+      : value;
   } catch {
     return value;
   }
@@ -92,26 +104,65 @@ type DeserializedUser = Omit<User, "address" | "company"> & {
   company: string | object | null;
 };
 
-function deserializeUser(user: User | null): DeserializedUser | null {
-  if (!user) return user;
+function deserializeUser(user: User): DeserializedUser {
   return {
     ...user,
-    address: typeof user.address === "string" ? tryParseJson(user.address) : user.address,
-    company: typeof user.company === "string" ? tryParseJson(user.company) : user.company,
+    address:
+      typeof user.address === "string"
+        ? tryParseJson(user.address)
+        : user.address,
+    company:
+      typeof user.company === "string"
+        ? tryParseJson(user.company)
+        : user.company,
   };
 }
 
-export type ResourceCounts = Record<typeof VALID_RESOURCES[number], number>
+export type ResourceCounts = Record<(typeof VALID_RESOURCES)[number], number>;
 
 export const jsonServerRouter = createRouter({
+  getCounts: publicQuery.query(async () => {
+    const [
+      userCount,
+      postCount,
+      commentCount,
+      albumCount,
+      photoCount,
+      todoCount,
+    ] = await Promise.all([
+      handleCount("users", users),
+      handleCount("posts", posts),
+      handleCount("comments", comments),
+      handleCount("albums", albums),
+      handleCount("photos", photos),
+      handleCount("todos", todos),
+    ]);
+    return {
+      users: userCount,
+      posts: postCount,
+      comments: commentCount,
+      albums: albumCount,
+      photos: photoCount,
+      todos: todoCount,
+    } satisfies ResourceCounts;
+  }),
+
+  getFeatureCards: publicQuery.query(() => getFeatureCards()),
+
   // ===== USERS =====
   users: createRouter({
-    list: publicQuery
-      .input(listInputSchema)
-      .query(async ({ input }) => {
-        const result = await handleList<User>("users", users, input, ["name", "username", "email", "phone", "website", "address", "company"]);
-        return { ...result, data: result.data.map(deserializeUser) };
-      }),
+    list: publicQuery.input(listInputSchema).query(async ({ input }) => {
+      const result = await handleList<User>("users", users, input, [
+        "name",
+        "username",
+        "email",
+        "phone",
+        "website",
+        "address",
+        "company",
+      ]);
+      return { ...result, data: result.data.map(deserializeUser) };
+    }),
 
     count: publicQuery.query(() => handleCount("users", users)),
 
@@ -119,40 +170,61 @@ export const jsonServerRouter = createRouter({
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
         const item = await handleGetById<User>("users", users, input.id);
-        return deserializeUser(item);
+        return item ? deserializeUser(item) : null;
       }),
 
     create: publicQuery
-      .input(z.object({
-        name: z.string().optional(),
-        username: z.string().optional(),
-        email: z.string().optional(),
-        address: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
-        phone: z.string().optional(),
-        website: z.string().optional(),
-        company: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
-      }))
+      .input(
+        z.object({
+          name: z.string().optional(),
+          username: z.string().optional(),
+          email: z.string().optional(),
+          address: z
+            .union([z.string(), z.record(z.string(), z.unknown())])
+            .optional(),
+          phone: z.string().optional(),
+          website: z.string().optional(),
+          company: z
+            .union([z.string(), z.record(z.string(), z.unknown())])
+            .optional(),
+        })
+      )
       .mutation(async ({ input }) => {
-        const result = await handleCreate<User>("users", users, serializeUser(input));
+        const result = await handleCreate<User>(
+          "users",
+          users,
+          serializeUser(input)
+        );
         return deserializeUser(result);
       }),
 
     update: publicQuery
-      .input(z.object({
-        id: z.number().int().positive(),
-        data: z.object({
-          name: z.string().optional(),
-          username: z.string().optional(),
-          email: z.string().optional(),
-          address: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
-          phone: z.string().optional(),
-          website: z.string().optional(),
-          company: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
-        }),
-      }))
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          data: z.object({
+            name: z.string().optional(),
+            username: z.string().optional(),
+            email: z.string().optional(),
+            address: z
+              .union([z.string(), z.record(z.string(), z.unknown())])
+              .optional(),
+            phone: z.string().optional(),
+            website: z.string().optional(),
+            company: z
+              .union([z.string(), z.record(z.string(), z.unknown())])
+              .optional(),
+          }),
+        })
+      )
       .mutation(async ({ input }) => {
-        const result = await handleUpdate<User>("users", users, input.id, serializeUser(input.data));
-        return deserializeUser(result);
+        const result = await handleUpdate<User>(
+          "users",
+          users,
+          input.id,
+          serializeUser(input.data)
+        );
+        return result ? deserializeUser(result) : null;
       }),
 
     delete: publicQuery
