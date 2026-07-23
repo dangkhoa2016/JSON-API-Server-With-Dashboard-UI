@@ -173,6 +173,156 @@ describe('todos CRUD', () => {
     expect(afterDelete.data).toHaveLength(0)
   })
 })
+
+describe('getCounts', () => {
+  beforeEach(async () => {
+    const db = getDb()
+    await db.run(sql`DELETE FROM settings`)
+    await db.run(sql`DELETE FROM photos`)
+    await db.run(sql`DELETE FROM comments`)
+    await db.run(sql`DELETE FROM posts`)
+    await db.run(sql`DELETE FROM albums`)
+    await db.run(sql`DELETE FROM todos`)
+    await db.run(sql`DELETE FROM users`)
+  })
+
+  it('returns 0 for all resources when DB is empty', async () => {
+    const result = await (createCaller as any).getCounts()
+    expect(result).toEqual({ users: 0, posts: 0, comments: 0, albums: 0, photos: 0, todos: 0 })
+  })
+
+  it('returns correct counts after inserting data', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO users (id, name) VALUES (1, 'u1'), (2, 'u2')`)
+    await db.run(sql`INSERT INTO posts (id, user_id, title, body) VALUES (1, 1, 'p1', 'b1')`)
+    await db.run(sql`INSERT INTO todos (id, user_id, title, completed) VALUES (1, 1, 't1', 0)`)
+    const result = await (createCaller as any).getCounts()
+    expect(result).toEqual({ users: 2, posts: 1, comments: 0, albums: 0, photos: 0, todos: 1 })
+  })
+})
+
+describe('getFeatureCards', () => {
+  beforeEach(async () => {
+    const db = getDb()
+    await db.run(sql`DELETE FROM settings`)
+    await db.run(sql`DELETE FROM photos`)
+    await db.run(sql`DELETE FROM comments`)
+    await db.run(sql`DELETE FROM posts`)
+    await db.run(sql`DELETE FROM albums`)
+    await db.run(sql`DELETE FROM todos`)
+    await db.run(sql`DELETE FROM users`)
+  })
+
+  it('returns 3 default cards when no settings exist', async () => {
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result).toHaveLength(3)
+    expect(result[0].key).toBe('feature_card_sqlite')
+    expect(result[1].key).toBe('feature_card_redis')
+    expect(result[2].key).toBe('feature_card_ratelimit')
+  })
+
+  it('default cards resolve template references to built-in defaults when settings are absent', async () => {
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[1].description).toContain('localhost')
+    expect(result[1].description).toContain('6379')
+    expect(result[2].description).toContain('100')
+    expect(result[2].description).toContain('60000')
+  })
+
+  it('default cards have healthy=false when enabling settings are absent', async () => {
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[1].healthy).toBe(false)
+    expect(result[2].healthy).toBe(false)
+  })
+
+  it('resolves template references from settings table', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('REDIS_HOST', 'cache.example.com', 'string', 'Redis Host', '', 'redis', 1),
+      ('REDIS_PORT', '7777', 'number', 'Redis Port', '', 'redis', 1),
+      ('REDIS_TTL', '3600', 'number', 'Redis TTL', '', 'redis', 1),
+      ('RATE_LIMIT_MAX_REQUESTS', '50', 'number', 'Rate Limit Max', '', 'rateLimit', 1),
+      ('RATE_LIMIT_WINDOW_MS', '10000', 'number', 'Rate Limit Window', '', 'rateLimit', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[1].description).toContain('cache.example.com')
+    expect(result[1].description).toContain('7777')
+    expect(result[1].description).toContain('3600')
+    expect(result[2].description).toContain('50')
+    expect(result[2].description).toContain('10000')
+  })
+
+  it('sets healthy=true when REDIS_ENABLED and RATE_LIMIT_ENABLED are true', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('REDIS_ENABLED', 'true', 'boolean', 'Redis Enabled', '', 'redis', 1),
+      ('RATE_LIMIT_ENABLED', 'true', 'boolean', 'Rate Limit Enabled', '', 'rateLimit', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[1].healthy).toBe(true)
+    expect(result[2].healthy).toBe(true)
+  })
+
+  it('uses cards from settings table when featureCards group entries exist', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('my_card', '{"icon":"Zap","iconBg":"bg-purple-100","iconColor":"text-purple-600"}', 'string', 'My Custom Card', 'This is from DB', 'featureCards', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result).toHaveLength(1)
+    expect(result[0].key).toBe('my_card')
+    expect(result[0].label).toBe('My Custom Card')
+    expect(result[0].description).toBe('This is from DB')
+    expect(result[0].icon).toBe('Zap')
+    expect(result[0].iconBg).toBe('bg-purple-100')
+    expect(result[0].iconColor).toBe('text-purple-600')
+  })
+
+  it('uses fallback icon when value JSON lacks icon field', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('minimal', '{}', 'string', 'Minimal', 'No icon specified', 'featureCards', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[0].icon).toBe('Database')
+    expect(result[0].iconBg).toBe('bg-blue-100 dark:bg-blue-900/30')
+    expect(result[0].iconColor).toBe('text-blue-600 dark:text-blue-400')
+  })
+
+  it('uses fallback meta when value is empty string', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('empty_card', '', 'string', 'Empty Value', 'No value set', 'featureCards', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[0].icon).toBe('Database')
+    expect(result[0].iconBg).toBe('bg-blue-100 dark:bg-blue-900/30')
+    expect(result[0].iconColor).toBe('text-blue-600 dark:text-blue-400')
+  })
+
+  it('skips template reference extraction when label or description is null', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('no_text', '{}', 'string', NULL, NULL, 'featureCards', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[0].key).toBe('no_text')
+    expect(result[0].label).toBe('')
+    expect(result[0].description).toBe('')
+    expect(result[0].icon).toBe('Database')
+  })
+
+  it('keeps unresolved template when key is not in settings, env, or defaults', async () => {
+    const db = getDb()
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('unknown_card', '{}', 'string', 'Card {{UNKNOWN_XYZ}}', 'Desc {{ANOTHER_MISSING}}', 'featureCards', 1)
+    `)
+    const result = await (createCaller as any).getFeatureCards()
+    expect(result[0].label).toContain('{{UNKNOWN_XYZ}}')
+    expect(result[0].description).toContain('{{ANOTHER_MISSING}}')
+  })
+})
+
 describe('search (q parameter)', () => {
   beforeEach(async () => {
     const db = getDb()
