@@ -176,4 +176,74 @@ export const jsonServerRouter = createRouter({
       body: z.string().min(1).optional(),
     }),
   }),
+
+  // ===== COMMENTS =====
+  comments: createCrudRoutes({
+    name: "comments",
+    table: comments,
+    searchFields: ["name", "email", "body"],
+    createSchema: z.object({
+      postId: z.number().int().positive(),
+      name: z.string().min(1),
+      email: z.string().email(),
+      body: z.string().min(1),
+    }),
+    updateSchema: z.object({
+      postId: z.number().int().positive().optional(),
+      name: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      body: z.string().min(1).optional(),
+    }),
+  }),
+
+  // ===== ALBUMS =====
+  albums: createCrudRoutes({
+    name: "albums",
+    table: albums,
+    searchFields: ["title"],
+    createSchema: z.object({
+      userId: z.number().int().positive(),
+      title: z.string().min(1),
+    }),
+    updateSchema: z.object({
+      userId: z.number().int().positive().optional(),
+      title: z.string().min(1).optional(),
+    }),
+  }),
+
+  // ===== PHOTOS =====
+  photos: createCrudRoutes({
+    name: "photos",
+    table: photos,
+    searchFields: ["title", "url", "thumbnailUrl"],
+    createSchema: z.object({
+      albumId: z.number().int().positive(),
+      title: z.string().min(1),
+      url: z.string().url(),
+      thumbnailUrl: z.string().url(),
+    }),
+    updateSchema: z.object({
+      albumId: z.number().int().positive().optional(),
+      title: z.string().min(1).optional(),
+      url: z.string().url().optional(),
+      thumbnailUrl: z.string().url().optional(),
+    }),
+  }),
+
+  // ===== TODOS =====
+  todos: createCrudRoutes({
+    name: "todos",
+    table: todos,
+    searchFields: ["title"],
+    createSchema: z.object({
+      userId: z.number().int().positive(),
+      title: z.string().min(1),
+      completed: z.boolean().default(false),
+    }),
+    updateSchema: z.object({
+      userId: z.number().int().positive().optional(),
+      title: z.string().min(1).optional(),
+      completed: z.boolean().optional(),
+    }),
+  }),
 });
