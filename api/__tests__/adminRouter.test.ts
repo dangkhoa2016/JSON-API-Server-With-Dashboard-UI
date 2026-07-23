@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { sql, eq } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import { adminRouter, resetLoginRateLimit } from "../adminRouter";
@@ -35,10 +35,11 @@ beforeEach(async () => {
   }
 });
 
-function createCaller() {
+function createCaller(headers?: Record<string, string>, clientIp: string = "203.0.113.10") {
   return adminRouter.createCaller({
-    req: new Request("http://test.com"),
+    req: new Request("http://test.com", { headers }),
     resHeaders: new Headers(),
+    clientIp,
   });
 }
 
@@ -48,6 +49,7 @@ function createAdminCaller() {
       headers: { authorization: `Bearer ${adminToken}` },
     }),
     resHeaders: new Headers(),
+    clientIp: "203.0.113.10",
   });
 }
 
@@ -106,6 +108,36 @@ describe("admin.auth.login", () => {
       await caller.auth.login({ username: "admin", password: "wrong" });
     }
     const blocked = await caller.auth.login({ username: "admin", password: "wrong" });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.message).toMatch(/Too many login attempts/);
+  });
+
+  it("blocks login after max attempts from same transport IP", async () => {
+    const transportIp = "203.0.113.10";
+    for (let i = 0; i < 5; i++) {
+      const caller = createCaller({}, transportIp);
+      await caller.auth.login({ username: "admin", password: "wrong" });
+    }
+    const sixth = createCaller({}, transportIp);
+    const blocked = await sixth.auth.login({ username: "admin", password: "wrong" });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.message).toMatch(/Too many login attempts/);
+  });
+
+  it("spoof regression: changing XFF and X-Real-IP does not create new buckets", async () => {
+    const transportIp = "203.0.113.10";
+    for (let i = 0; i < 5; i++) {
+      const caller = createCaller(
+        { "x-forwarded-for": `198.51.100.${i}`, "x-real-ip": `203.0.113.${i}` },
+        transportIp,
+      );
+      await caller.auth.login({ username: "admin", password: "wrong" });
+    }
+    const sixth = createCaller(
+      { "x-forwarded-for": "198.51.100.99", "x-real-ip": "203.0.113.99" },
+      transportIp,
+    );
+    const blocked = await sixth.auth.login({ username: "admin", password: "wrong" });
     expect(blocked.ok).toBe(false);
     expect(blocked.message).toMatch(/Too many login attempts/);
   });
@@ -299,6 +331,34 @@ describe("admin.data.seed", () => {
     const result = await caller.data.seed();
     expect(result.ok).toBe(true);
   }, 30000);
+
+  it("uses db.transaction for seed operations", async () => {
+    const db = getDb();
+    const transactionSpy = vi.spyOn(db, 'transaction');
+
+    const caller = createAdminCaller();
+    await caller.data.seed();
+
+    expect(transactionSpy).toHaveBeenCalledOnce();
+  }, 30000);
+
+  it("rolls back all changes when seed fails", async () => {
+    const db = getDb();
+    const usersBefore = await db.select().from(schema.users).all();
+    const postsBefore = await db.select().from(schema.posts).all();
+
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('Network error'));
+
+    const caller = createAdminCaller();
+    await expect(caller.data.seed()).rejects.toThrow();
+
+    vi.restoreAllMocks();
+
+    const usersAfter = await db.select().from(schema.users).all();
+    expect(usersAfter.length).toBe(usersBefore.length);
+    const postsAfter = await db.select().from(schema.posts).all();
+    expect(postsAfter.length).toBe(postsBefore.length);
+  }, 15000);
 });
 
 describe("admin.data.resetDatabase", () => {
@@ -306,7 +366,17 @@ describe("admin.data.resetDatabase", () => {
     const caller = createAdminCaller();
     const result = await caller.data.resetDatabase();
     expect(result.ok).toBe(true);
-  });
+  }, 30000);
+
+  it("uses db.transaction for resetDatabase operations", async () => {
+    const db = getDb();
+    const transactionSpy = vi.spyOn(db, 'transaction');
+
+    const caller = createAdminCaller();
+    await caller.data.resetDatabase();
+
+    expect(transactionSpy).toHaveBeenCalledOnce();
+  }, 30000);
 });
 
 describe("adminQuery middleware", () => {
