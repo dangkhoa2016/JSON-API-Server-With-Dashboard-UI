@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 import { sql, eq } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import {
   adminRouter,
   resetLoginRateLimit,
   stopLoginRateLimitPruning,
+  startLoginRateLimitPruning,
 } from "../adminRouter";
 import { jsonServerRouter } from "../jsonServerRouter";
 import { getDb } from "../queries/connection";
@@ -240,6 +241,87 @@ describe("admin.auth.login", () => {
     });
     expect(blocked.ok).toBe(false);
     expect(blocked.message).toMatch(/Too many login attempts/);
+  });
+});
+
+describe("login rate limit pruning", () => {
+  it("prunes expired login attempts and keeps active ones", async () => {
+    stopLoginRateLimitPruning();
+    vi.useFakeTimers();
+    try {
+      startLoginRateLimitPruning();
+
+      const ipA = createCaller({}, "198.51.100.10");
+      for (let i = 0; i < 5; i++) {
+        await ipA.auth.login({ username: "admin", password: "wrong" });
+      }
+      const blockedBefore = await ipA.auth.login({
+        username: "admin",
+        password: "wrong",
+      });
+      expect(blockedBefore.message).toMatch(/Too many login attempts/);
+
+      const ipB = createCaller({}, "198.51.100.20");
+      await ipB.auth.login({ username: "admin", password: "wrong" });
+
+      vi.advanceTimersByTime(14 * 60 * 1000);
+
+      const ipC = createCaller({}, "198.51.100.30");
+      await ipC.auth.login({ username: "admin", password: "wrong" });
+
+      vi.advanceTimersByTime(60 * 1000);
+
+      const a = await createCaller({}, "198.51.100.10").auth.login({
+        username: "admin",
+        password: "wrong",
+      });
+      expect(a.ok).toBe(false);
+      expect(a.message).not.toMatch(/Too many login attempts/);
+
+      const ipCAfter = createCaller({}, "198.51.100.30");
+      for (let i = 0; i < 5; i++) {
+        await ipCAfter.auth.login({ username: "admin", password: "wrong" });
+      }
+      const cBlocked = await ipCAfter.auth.login({
+        username: "admin",
+        password: "wrong",
+      });
+      expect(cBlocked.message).toMatch(/Too many login attempts/);
+    } finally {
+      vi.useRealTimers();
+      stopLoginRateLimitPruning();
+      startLoginRateLimitPruning();
+    }
+  });
+});
+
+describe("login rate limit timer lifecycle", () => {
+  afterEach(() => {
+    stopLoginRateLimitPruning();
+    startLoginRateLimitPruning();
+  });
+
+  it("does not create a second timer when one is already active", () => {
+    stopLoginRateLimitPruning();
+    const spy = vi.spyOn(globalThis, "setInterval");
+    try {
+      startLoginRateLimitPruning();
+      startLoginRateLimitPruning();
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stop is a no-op when no timer is running", () => {
+    stopLoginRateLimitPruning();
+    const spy = vi.spyOn(globalThis, "clearInterval");
+    try {
+      stopLoginRateLimitPruning();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
