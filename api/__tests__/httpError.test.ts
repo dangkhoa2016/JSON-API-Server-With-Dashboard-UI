@@ -52,4 +52,12 @@ describe("toHttpError", () => {
     expect(spy).toHaveBeenCalledWith("Unknown error:", err);
     spy.mockRestore();
   });
+
+  it("maps SyntaxError (malformed JSON) to 400", () => {
+    const err = new SyntaxError("Unexpected token in JSON");
+    expect(toHttpError(err)).toMatchObject({
+      status: 400,
+      body: { ok: false, message: "Invalid JSON body" },
+    });
+  });
 });
