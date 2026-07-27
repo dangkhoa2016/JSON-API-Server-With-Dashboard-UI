@@ -19,7 +19,7 @@ interface ResourceItem {
   [key: string]: unknown;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   fields: Field[]
   items?: ResourceItem[]
@@ -30,7 +30,10 @@ const props = defineProps<{
   isCreating: boolean
   isUpdating: boolean
   icon?: Component
-}>()
+  canDelete?: boolean
+}>(), {
+  canDelete: true,
+})
 
 const emit = defineEmits<{
   create: [data: Record<string, unknown>]
@@ -255,6 +258,7 @@ function onSort(field: string | undefined, order: 'asc' | 'desc') {
       :per-page="perPage"
       :sort-field="sortField"
       :sort-order="sortOrder"
+      :can-delete="canDelete"
       @edit="openEdit"
       @delete="handleDelete"
       @update:page="goToPage"

@@ -14,7 +14,7 @@ interface TableItem {
   [key: string]: unknown;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   fields: Field[]
   items: TableItem[]
   isLoading: boolean
@@ -25,7 +25,10 @@ const props = defineProps<{
   sortField?: string
   sortOrder?: 'asc' | 'desc'
   maxDisplayFields?: number
-}>()
+  canDelete?: boolean
+}>(), {
+  canDelete: true,
+})
 
 const emit = defineEmits<{
   edit: [item: TableItem]
@@ -214,6 +217,7 @@ const visiblePages = computed(() => {
                   <Pencil class="w-4 h-4" />
                 </button>
                 <button
+                  v-if="canDelete"
                   class="inline-flex cursor-pointer items-center justify-center rounded-lg h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors duration-150"
                   title="Delete"
                   @click="emit('delete', item.id)"
