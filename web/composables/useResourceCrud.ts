@@ -3,7 +3,7 @@ import type { Ref } from "vue";
 import { toast } from "vue-sonner";
 import { trpc } from "@/providers/trpc";
 
-type ResourceName =
+export type ResourceName =
   "albums" | "comments" | "photos" | "posts" | "todos" | "users";
 
 const labels: Record<ResourceName, { title: string; singular: string }> = {
