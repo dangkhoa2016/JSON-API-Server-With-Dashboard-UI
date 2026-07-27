@@ -86,6 +86,29 @@ describe('ResourceTable.vue', () => {
     expect(wrapper.emitted('delete')![0]).toEqual([1])
   })
 
+  it('hides delete button when canDelete is false', () => {
+    const wrapper = createWrapper({
+      items: [{ id: 1, title: 'Test', body: 'Hello', userId: 1 }],
+      total: 1,
+      canDelete: false,
+    })
+    expect(wrapper.find('button[title="Delete"]').exists()).toBe(false)
+  })
+
+  it('shows delete button when canDelete is true or unset', () => {
+    const unset = createWrapper({
+      items: [{ id: 1, title: 'Test', body: 'Hello', userId: 1 }],
+      total: 1,
+    })
+    const enabled = createWrapper({
+      items: [{ id: 1, title: 'Test', body: 'Hello', userId: 1 }],
+      total: 1,
+      canDelete: true,
+    })
+    expect(unset.find('button[title="Delete"]').exists()).toBe(true)
+    expect(enabled.find('button[title="Delete"]').exists()).toBe(true)
+  })
+
   it('emits update:page on previous page click', async () => {
     const wrapper = createWrapper({
       items: [{ id: 1, title: 'Test', body: 'Hello', userId: 1 }],
