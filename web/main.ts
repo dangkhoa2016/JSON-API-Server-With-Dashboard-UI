@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { trpc, trpcClient } from './providers/trpc'
+import { useAuth } from './composables/useAuth'
 import App from './App.vue'
 import './index.css'
 
@@ -32,6 +33,18 @@ const router = createRouter({
     { path: '/todos', name: 'todos', component: () => import('./pages/Todos.vue') },
     { path: '/admin/settings', name: 'admin-settings', component: () => import('./pages/Settings.vue') },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const { isAuthenticated, authResolved, verifyToken } = useAuth()
+  if (to.meta.requiresAuth) {
+    if (!authResolved.value) {
+      await verifyToken()
+    }
+    if (!isAuthenticated.value) {
+      return { name: 'home' }
+    }
+  }
 })
 
 app.use(router)
