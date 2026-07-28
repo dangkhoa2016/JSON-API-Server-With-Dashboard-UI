@@ -18,7 +18,7 @@ export default defineConfig({
     environmentMatchGlobs: [
       ["web/**", "jsdom"],
     ],
-    include: ["api/**/*.test.ts", "api/**/*.spec.ts", "db/**/*.test.ts", "db/**/*.spec.ts", "web/**/*.test.ts", "web/**/*.spec.ts"],
+    include: ["api/**/*.test.ts", "api/**/*.spec.ts", "db/**/*.test.ts", "db/**/*.spec.ts", "web/**/*.test.ts", "web/**/*.spec.ts", "scripts/**/*.test.ts"],
     setupFiles: ["api/__tests__/vitest.setup.ts"],
     coverage: {
       provider: "v8",
