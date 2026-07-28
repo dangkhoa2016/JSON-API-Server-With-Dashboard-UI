@@ -68,3 +68,25 @@ jobs:
               git log --format='%B' -1 "$commit" | node scripts/check-commit-message.mjs /dev/stdin
             done <<< "$commits"
           fi
+      - name: Check per-commit coverage recovery
+        run: |
+          refs=$(scripts/select-commit-range.sh --refs "${{ github.event_name }}" "${{ github.base_ref }}" "${{ github.event.before }}" "${{ github.sha }}")
+          mapfile -t range <<< "$refs"
+          base="${range[0]}"
+          head="${range[1]}"
+          if [ -n "$base" ]; then
+            bash manual-test-coverage/verify-commit-coverage.sh \
+              "$base" "$head" \
+              --project-root "$GITHUB_WORKSPACE" \
+              --strict \
+              --threshold 80 \
+              --max-recovery-commits 2 \
+              --timeout 600
+          else
+            bash manual-test-coverage/verify-commit-coverage.sh \
+              --project-root "$GITHUB_WORKSPACE" \
+              --strict \
+              --threshold 80 \
+              --max-recovery-commits 2 \
+              --timeout 600
+          fi
