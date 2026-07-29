@@ -53,6 +53,8 @@ jobs:
           node-version: '22'
           cache: "yarn"
       - run: yarn install --frozen-lockfile
+      - name: Test commit coverage verifier isolation
+        run: yarn test:coverage-verifier
       - name: Check commit message
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
