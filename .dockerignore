@@ -1,0 +1,14 @@
+node_modules
+.git
+.gitignore
+*.md
+coverage
+dist
+.env
+.gitattributes
+.gitkeep
+.github
+.circleci
+husky
+.commitlintrc.json
+AGENTS.md
