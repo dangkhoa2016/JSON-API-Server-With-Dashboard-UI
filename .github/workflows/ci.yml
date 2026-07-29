@@ -98,3 +98,25 @@ jobs:
           if [ -f manual-test-coverage/commit-policy-summary.md ]; then
             cat manual-test-coverage/commit-policy-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  container-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "yarn"
+
+      - run: yarn install --immutable
+
+      - run: yarn build
+
+      - run: sh scripts/container-smoke-test.sh json-api-ci:smoke
+        env:
+          DATABASE_URL: file:./data/ci.db
