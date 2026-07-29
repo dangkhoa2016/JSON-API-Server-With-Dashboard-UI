@@ -65,7 +65,9 @@ jobs:
       - name: Check commit size
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            STRICT=true bash scripts/check-commit-size.sh "origin/${{ github.base_ref }}" HEAD
+            for commit in $(git log --format='%H' origin/${{ github.base_ref }}..HEAD); do
+              MODE=commit BEFORE=$commit STRICT=true bash scripts/check-commit-size.sh
+            done
           fi
 
   container-smoke:
@@ -84,3 +86,5 @@ jobs:
       - run: yarn build
 
       - run: sh scripts/container-smoke-test.sh json-api-ci:smoke
+        env:
+          DATABASE_URL: file:./data/ci.db
