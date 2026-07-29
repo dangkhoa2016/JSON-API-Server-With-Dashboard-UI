@@ -60,6 +60,8 @@ jobs:
           node-version: "22"
           cache: "yarn"
       - run: yarn install --immutable
+      - name: Test commit coverage verifier isolation
+        run: yarn test:coverage-verifier
       - name: Check commit message
         run: |
           commits=$(scripts/select-commit-range.sh "${{ github.event_name }}" "${{ github.base_ref }}" "${{ github.event.before }}" "${{ github.sha }}")
@@ -89,4 +91,10 @@ jobs:
               --threshold 80 \
               --max-recovery-commits 2 \
               --timeout 600
+          fi
+      - name: Post commit-policy summary
+        if: always()
+        run: |
+          if [ -f manual-test-coverage/commit-policy-summary.md ]; then
+            cat manual-test-coverage/commit-policy-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi

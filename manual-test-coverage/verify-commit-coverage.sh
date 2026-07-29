@@ -122,6 +122,9 @@ fi
 
 RESULTS_DIR="$OUTPUT_DIR/results"
 REPORT="$OUTPUT_DIR/coverage-report.md"
+SUMMARY_REPORT="$OUTPUT_DIR/commit-policy-summary.md"
+TABLE_PLAIN=""
+TABLE_LINKED=""
 mkdir -p "$RESULTS_DIR"
 
 WORKTREE_DIR=""
@@ -129,6 +132,9 @@ cleanup() {
   if [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ]; then
     git -C "$PROJECT_ROOT" worktree remove --force "$WORKTREE_DIR" 2>/dev/null || true
     rm -rf "$WORKTREE_DIR"
+  fi
+  if [ -n "$TABLE_PLAIN" ] && [ -n "$TABLE_LINKED" ]; then
+    rm -f "$TABLE_PLAIN" "$TABLE_LINKED"
   fi
 }
 trap cleanup EXIT
@@ -302,7 +308,10 @@ for entry in "${COMMITS[@]}"; do
   echo "  -> Running $TEST_COMMAND..."
   rm -rf coverage/
   set +e
-  output=$(timeout "$TIMEOUT_SECONDS" $TEST_COMMAND 2>&1)
+  # vitest auto-adds a github-actions reporter in CI that appends a "Vitest Test
+  # Report" block to $GITHUB_STEP_SUMMARY on every run; empty the path so per-commit
+  # runs never pollute the job summary (CI posts commit-policy-summary.md instead).
+  output=$(GITHUB_STEP_SUMMARY= timeout "$TIMEOUT_SECONDS" $TEST_COMMAND 2>&1)
   exit_code=$?
   set -e
   echo "$output" > "$LOGFILE"
@@ -418,6 +427,29 @@ md_escape_cell() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/|/\\|/g; s/`/\\`/g'
 }
 
+VERDICT="PASS"
+if [ "$REAL_FAIL_COUNT" -gt 0 ]; then
+  VERDICT="FAIL"
+elif [ "$STRICT" = true ] && { [ "$CHECKOUT_FAIL_COUNT" -gt 0 ] || [ "$TIMEOUT_COUNT" -gt 0 ] || [ "$NO_DATA_COUNT" -gt 0 ] || [ "$UNRECOVERED_LOW" -gt 0 ] || [ "$INSTALL_FAIL_COUNT" -gt 0 ]; }; then
+  VERDICT="FAIL"
+fi
+
+TABLE_PLAIN="$(mktemp)"
+TABLE_LINKED="$(mktemp)"
+for ((i = 1; i <= TOTAL; i++)); do
+  plain_cell="\`${ROW_HASH[$i]}\`"
+  linked_cell="$plain_cell"
+  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    full_hash="$(git -C "$PROJECT_ROOT" rev-parse "${ROW_HASH[$i]}")"
+    linked_cell="[\`${ROW_HASH[$i]:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${full_hash})"
+  fi
+  escaped_msg="$(md_escape_cell "${ROW_MSG[$i]}")"
+  printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+    "$i" "$plain_cell" "${ROW_STMTS[$i]:--}" "${ROW_BRANCH[$i]:--}" "${ROW_FUNCS[$i]:--}" "${ROW_LINES[$i]:--}" "${ROW_STATUS[$i]}" "$escaped_msg" >> "$TABLE_PLAIN"
+  printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+    "$i" "$linked_cell" "${ROW_STMTS[$i]:--}" "${ROW_BRANCH[$i]:--}" "${ROW_FUNCS[$i]:--}" "${ROW_LINES[$i]:--}" "${ROW_STATUS[$i]}" "$escaped_msg" >> "$TABLE_LINKED"
+done
+
 mkdir -p "$(dirname "$REPORT")"
 rm -f "$REPORT"
 {
@@ -433,9 +465,7 @@ rm -f "$REPORT"
   echo ""
   echo "| # | Commit | Stmts | Branch | Funcs | Lines | Status | Message |"
   echo "|--:|--------|------:|-------:|------:|------:|--------|---------|"
-  for ((i = 1; i <= TOTAL; i++)); do
-    echo "| $i | \`${ROW_HASH[$i]}\` | ${ROW_STMTS[$i]:--} | ${ROW_BRANCH[$i]:--} | ${ROW_FUNCS[$i]:--} | ${ROW_LINES[$i]:--} | ${ROW_STATUS[$i]} | ${ROW_MSG[$i]} |"
-  done
+  cat "$TABLE_PLAIN"
   echo ""
   echo "═══════════════════════════════════════════════════"
   echo "SUMMARY"
@@ -453,6 +483,29 @@ rm -f "$REPORT"
   printf "  %-29s%s\n" "Install failures:" "$INSTALL_FAIL_COUNT"
   printf "  %-29s%s\n" "Threshold:" "${COVERAGE_THRESHOLD}%"
 } >> "$REPORT"
+
+mkdir -p "$(dirname "$SUMMARY_REPORT")"
+rm -f "$SUMMARY_REPORT"
+{
+  echo "## Commit Policy — Coverage Report"
+  echo ""
+  echo "Generated: $(date -Is 2>/dev/null || date)"
+  echo "Range: \`${RANGE_LABEL}\`"
+  echo "Threshold: ${COVERAGE_THRESHOLD}%"
+  echo "Recovery policy: LOW must recover within ${MAX_RECOVERY_COMMITS} adjacent commit(s)"
+  echo "Dependency mode: ${DEP_MODE}"
+  echo "Node: $(node -v 2>/dev/null || echo 'unknown') · Yarn: $(yarn --version 2>/dev/null || echo 'unknown')"
+  echo ""
+  echo "| # | Commit | Stmts | Branch | Funcs | Lines | Status | Message |"
+  echo "|--:|--------|------:|-------:|------:|------:|--------|---------|"
+  cat "$TABLE_LINKED"
+  echo ""
+  echo "Result: ${PASSED} passed · ${RECOVERED_LOW} recovered · ${UNRECOVERED_LOW} unrecovered · ${NOT_APPLICABLE_AND_BOOTSTRAP} bootstrap/n-a · ${REAL_FAIL_COUNT} failures"
+  echo ""
+  echo "Verdict: **${VERDICT}**"
+} >> "$SUMMARY_REPORT"
+
+rm -f "$TABLE_PLAIN" "$TABLE_LINKED"
 
 echo ""
 echo "═══════════════════════════════════════════════════"
@@ -472,6 +525,7 @@ printf "  %-29s%s\n" "Install failures:" "$INSTALL_FAIL_COUNT"
 printf "  %-29s%s\n" "Threshold:" "${COVERAGE_THRESHOLD}%"
 echo ""
 echo "Report written to $REPORT"
+echo "Summary written to $SUMMARY_REPORT"
 
 if [ "$REAL_FAIL_COUNT" -gt 0 ]; then
   echo "FATAL: ${REAL_FAIL_COUNT} commit(s) failed — exiting with code 1"
