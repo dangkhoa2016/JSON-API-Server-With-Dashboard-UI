@@ -1,0 +1,3 @@
+# .git-blame-ignore-revs
+# Commits to ignore in git blame (formatting-only changes)
+# Add commit hashes below, one per line, prefixed with `# ` description
