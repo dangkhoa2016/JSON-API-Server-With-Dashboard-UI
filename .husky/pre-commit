@@ -1,1 +1,4 @@
 yarn check
+
+# Check commit size
+./scripts/check-commit-size.sh
