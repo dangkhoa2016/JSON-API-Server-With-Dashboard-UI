@@ -70,6 +70,14 @@ jobs:
               git log --format='%B' -1 "$commit" | node scripts/check-commit-message.mjs /dev/stdin
             done <<< "$commits"
           fi
+      - name: Check commit size
+        run: |
+          commits=$(scripts/select-commit-range.sh "${{ github.event_name }}" "${{ github.base_ref }}" "${{ github.event.before }}" "${{ github.sha }}")
+          if [ -n "$commits" ]; then
+            while IFS= read -r commit; do
+              MODE=commit BEFORE=$commit STRICT=true bash scripts/check-commit-size.sh
+            done <<< "$commits"
+          fi
       - name: Check per-commit coverage recovery
         run: |
           refs=$(scripts/select-commit-range.sh --refs "${{ github.event_name }}" "${{ github.base_ref }}" "${{ github.event.before }}" "${{ github.sha }}")
