@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.sh text eol=lf
+yarn.lock linguist-generated
+*.svg linguist-generated
