@@ -1333,12 +1333,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lucide/vue@npm:^1.14.0":
-  version: 1.26.0
-  resolution: "@lucide/vue@npm:1.26.0"
+"@lucide/vue@npm:^1.27.0":
+  version: 1.27.0
+  resolution: "@lucide/vue@npm:1.27.0"
   peerDependencies:
     vue: ">=3.0.1"
-  checksum: 10c0/05cc1761e9b027b35effb043002113e05b973ff4824c211a648cccbf5af427485fdbf1a2d5e30058a68c4f4a4352aaad43f086424359d121366dddadcffd8232
+  checksum: 10c0/679cf800587fdb8dc3cdda1d5d86678529e9aa32bd9bbc8ebc54a6e48b7978be27f236046cd853096454d15faab0650e096d9e1744a5edcffd1dc1c3ee9939e1
   languageName: node
   linkType: hard
 
@@ -4064,7 +4064,7 @@ __metadata:
     "@hono/node-server": "npm:^2.0.5"
     "@hono/vite-dev-server": "npm:^0.26.0"
     "@libsql/client": "npm:^0.17.4"
-    "@lucide/vue": "npm:^1.14.0"
+    "@lucide/vue": "npm:^1.27.0"
     "@node-rs/argon2": "npm:^2.0.2"
     "@playwright/test": "npm:^1.62.1"
     "@tailwindcss/postcss": "npm:^4.3.1"
