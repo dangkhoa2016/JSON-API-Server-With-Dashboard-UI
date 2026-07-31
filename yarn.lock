@@ -1325,10 +1325,10 @@
     "@vue/devtools-api" "^6.6.3"
     vue-demi "^0.14.10"
 
-"@trpc-vue-query/client@^0.1.0":
-  version "0.1.0"
-  resolved "https://registry.npmjs.org/@trpc-vue-query/client/-/client-0.1.0.tgz#963f39ace1781e35c0d7f38ec35481461d02f423"
-  integrity sha512-DdGpEi/TPwH6fDJhT5FNC9WHq0Khm6hmY82NQaaOvATtZOBV15cFhfNnPW5O+dLtHmdnTcDtGJxT4O2YROyjpA==
+"@trpc-vue-query/client@^0.2.0":
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/@trpc-vue-query/client/-/client-0.2.0.tgz#927ce57d1819e8cb1afc99963956d5f81279a359"
+  integrity sha512-92alwtELT7IpGrpJgw2J7WX2ANi3a34jeL/ZP+Ol6Rj4/bf+D5nTdKRZBJY/IvSJJjWExU5FxBpafuVRFOtVrQ==
 
 "@trpc/client@^11.17.0":
   version "11.18.0"
