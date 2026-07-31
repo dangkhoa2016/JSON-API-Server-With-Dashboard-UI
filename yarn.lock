@@ -779,10 +779,10 @@
   resolved "https://registry.npmjs.org/@hono/node-server/-/node-server-1.19.15.tgz#22a1b119cd35fbbd9e54e16ea479589472f19db0"
   integrity sha512-Za2ai6TLdKjUvnur+eenO6nuYYipVAEhyCAdaV8IRvmU9kK8crOZUSYvIXn72E4f8fJqyAbpcJuTsYYmZp9Deg==
 
-"@hono/node-server@^2.0.5":
-  version "2.0.11"
-  resolved "https://registry.npmjs.org/@hono/node-server/-/node-server-2.0.11.tgz#0e947b19fe8602232cf6049feeda8f15dea47569"
-  integrity sha512-bjD221KPLoJTWUwso1J6fGKiTXEUFedG/s0visavY4zakFPkeGURMRNly+FhBHs7T8Dz4qHaZIMX9ZoJHSJtKA==
+"@hono/node-server@^2.0.12":
+  version "2.0.12"
+  resolved "https://registry.yarnpkg.com/@hono/node-server/-/node-server-2.0.12.tgz#23876c8640ec7b9cc77dd457758464b1206a11cd"
+  integrity sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==
 
 "@hono/vite-dev-server@^0.26.0":
   version "0.26.1"
