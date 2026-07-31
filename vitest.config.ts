@@ -19,6 +19,7 @@ export default defineConfig({
       ["web/**", "jsdom"],
     ],
     include: ["api/**/*.test.ts", "api/**/*.spec.ts", "db/**/*.test.ts", "db/**/*.spec.ts", "web/**/*.test.ts", "web/**/*.spec.ts", "scripts/**/*.test.ts"],
+    exclude: ["web/e2e/**"],
     setupFiles: ["api/__tests__/vitest.setup.ts"],
     coverage: {
       provider: "v8",

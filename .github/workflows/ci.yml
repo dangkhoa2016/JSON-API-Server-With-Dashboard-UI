@@ -88,3 +88,46 @@ jobs:
       - run: sh scripts/container-smoke-test.sh json-api-ci:smoke
         env:
           DATABASE_URL: file:./data/ci.db
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "yarn"
+
+      - run: yarn install --frozen-lockfile
+
+      - name: Setup database
+        run: yarn db:generate && yarn db:migrate && yarn db:seed
+        env:
+          DATABASE_URL: file:./data/e2e.db
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run E2E tests
+        run: npx playwright test
+        env:
+          DATABASE_URL: file:./data/e2e.db
+          REDIS_ENABLED: "true"
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
