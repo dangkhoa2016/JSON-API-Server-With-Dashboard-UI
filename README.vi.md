@@ -17,11 +17,11 @@ Một ứng dụng CRUD full-stack lấy cảm hứng từ [json-server](https:/
 - **Giao diện Vue 3 SPA hoàn chỉnh** — 14 components, 8 trang, chế độ tối, bố cục responsive, thông báo toast, và bảng quản trị settings. Không chỉ là API — một giao diện quản lý trọn vẹn.
 - **Hai mặt API, một business logic** — REST (`/api/:resource`) và tRPC (`trpc.json.*`) cùng ủy thác vào cùng một thủ tục đã được định kiểu. Viết một lần, dùng từ bất kỳ client nào.
 - **An toàn kiểu dữ liệu từ đầu đến cuối** — TypeScript 6 ở cả hai phía, tRPC kết nối mà không cần sinh code, Zod xác thực ở mọi ranh giới. Không có khoảng trống kiểu giữa database và UI.
-- **100% test coverage** — **50 file test** ở cả backend và frontend đạt 100% trên statements, branches, functions, và lines. Integration tests chạy với SQLite thật + HTTP; component tests dùng `@vue/test-utils` với jsdom.
+- **100% test coverage** — **69 file test** ở cả backend và frontend đạt 100% trên statements, branches, functions, và lines. Integration tests chạy với SQLite thật + HTTP; component tests dùng `@vue/test-utils` với jsdom. E2E browser tests dùng Playwright.
 - **Drizzle ORM với libSQL (tương thích Turso)** — Bắt đầu với SQLite cục bộ, mở rộng lên Turso distributed database. Cùng code, không cần viết lại.
 - **Giới hạn tốc độ đa tầng với circuit breaker** — Lua scripting trên Redis (INCR+PEXPIRE) đếm nguyên tử → dự phòng in-memory LRU (10k mục, thời gian chặn tăng dần: 5p→20p→1g) → cho phép tất cả. Circuit breaker mở sau 3 lần Redis thất bại (30s), với retry exponential backoff. Trọng số request: GET=1, POST/PUT/PATCH=2, DELETE=3.
 - **Docker sẵn sàng sản xuất** — Build đa tầng, chạy với user không phải root, tự động migration + seeding khi khởi động, toàn bộ cấu hình qua biến môi trường.
-- **Trải nghiệm phát triển chuyên nghiệp** — Husky pre-commit hooks, commitlint (conventional commits), GitHub Actions CI ma trận trên Node 22/24/26, tự động kiểm tra coverage.
+- **Trải nghiệm phát triển chuyên nghiệp** — Husky pre-commit hooks, commitlint (conventional commits), lint-staged tự động định dạng code, GitHub Actions CI ma trận trên Node 22/24/26, tự động kiểm tra coverage (ngưỡng 80%), Dependabot cập nhật dependency, Playwright E2E browser tests, và sinh changelog.
 
 ---
 
@@ -40,9 +40,9 @@ Một ứng dụng CRUD full-stack lấy cảm hứng từ [json-server](https:/
 | Xác thực | [Zod](https://zod.dev/) |
 | Cache | Redis qua [ioredis](https://github.com/redis/ioredis) |
 | Bảo mật | Argon2 qua `@node-rs/argon2` |
-| Kiểm thử | [Vitest](https://vitest.dev/), `@vue/test-utils`, jsdom |
+| Kiểm thử | [Vitest](https://vitest.dev/), `@vue/test-utils`, jsdom, [Playwright](https://playwright.dev/) |
 | CI | GitHub Actions (ma trận: Node 22, 24, 26) |
-| Lint / Format | ESLint, Prettier, commitlint, Husky |
+| Lint / Format | ESLint, Prettier, commitlint, Husky, lint-staged |
 
 ---
 
@@ -167,6 +167,7 @@ Mở http://localhost:3000 — cả API và SPA đều được phục vụ bở
 | `yarn db:seed` | Nạp dữ liệu từ JSONPlaceholder |
 | `yarn db:seed:settings` | Nạp bảng settings |
 | `yarn db:seed:admin` | Nạp thông tin admin |
+| `yarn test:e2e` | Chạy Playwright E2E browser tests |
 
 ---
 
@@ -216,6 +217,18 @@ Mở http://localhost:3000 — cả API và SPA đều được phục vụ bở
 │   ├── pages/                  # 8 component trang
 │   └── __tests__/              # Bộ test frontend (31 file)
 ├── manual/                     # Script curl test (REST + tRPC)
+├── web/
+│   └── e2e/                    # Playwright E2E browser tests
+├── .github/
+│   ├── dependabot.yml          # Cập nhật dependency tự động
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── ISSUE_TEMPLATE/         # Mẫu báo lỗi + yêu cầu tính năng
+├── .editorconfig               # Coding style đồng nhất giữa các editor
+├── .gitattributes              # Chuẩn hóa xuống dòng
+├── SECURITY.md                 # Chính sách báo cáo lỗ hổng
+├── CODE_OF_CONDUCT.md          # Quy tắc ứng xử (Contributor Covenant)
+├── CHANGELOG.md                # Nhật ký phát hành tự động
+├── playwright.config.ts        # Cấu hình E2E test
 ├── Dockerfile                  # Build Docker đa tầng
 ├── docker-compose.yml          # Cấu hình Docker Compose
 ├── docker-entrypoint.sh        # Entrypoint tự động seed
@@ -268,22 +281,26 @@ trpc.json.<resource>.count()
 ## Kiểm thử
 
 ```bash
-# Chạy tất cả tests
+# Chạy tất cả tests (không bao gồm E2E)
 yarn test
 
-# Với coverage
+# Với coverage (ngưỡng 80% được áp dụng)
 yarn test:coverage
 
 # Chế độ watch
 yarn test:watch
+
+# E2E browser tests
+yarn test:e2e
 ```
 
-Dự án áp dụng **100% code coverage**. Bộ test bao gồm:
+Dự án áp dụng **100% code coverage** (ngưỡng tối thiểu 80% được cấu hình trong vitest). Bộ test bao gồm:
 
-- **API tests** (19 file, môi trường `node`): Kiểm thử tích hợp đầy đủ tất cả REST endpoints, tRPC procedures, rate limiting, Redis caching, admin auth, settings, cấu hình môi trường, database seeding, và các trường hợp biên.
-- **Frontend tests** (31 file, môi trường `jsdom`): Kiểm thử component cho tất cả UI primitives, pages, layouts; kiểm thử composable cho auth, theme, và CRUD; kiểm thử utility cho token helpers và xử lý chuỗi.
+- **API tests** (25 file, môi trường `node`): Kiểm thử tích hợp đầy đủ tất cả REST endpoints, tRPC procedures, rate limiting, Redis caching, admin auth, settings, cấu hình môi trường, database seeding, và các trường hợp biên.
+- **Frontend tests** (40 file, môi trường `jsdom`): Kiểm thử component cho tất cả UI primitives, pages, layouts; kiểm thử composable cho auth, theme, và CRUD; kiểm thử utility cho token helpers và xử lý chuỗi.
+- **E2E tests** (1 file, Playwright): Kiểm thử cấp trình duyệt bao gồm đăng nhập admin, chỉnh sửa settings, và đăng xuất trên server thật.
 
-Backend tests dùng SQLite trong bộ nhớ (`:memory:`) và nạp dữ liệu tổng hợp mỗi test. Frontend tests giả lập tRPC calls, Vue Router, và Lucide icons để kiểm thử component độc lập.
+Backend tests dùng SQLite trong bộ nhớ (`:memory:`) và nạp dữ liệu tổng hợp mỗi test. Frontend tests giả lập tRPC calls, Vue Router, và Lucide icons để kiểm thử component độc lập. E2E tests khởi động toàn bộ ứng dụng qua Vite dev server và chạy trên trình duyệt thật.
 
 ---
 
@@ -358,10 +375,13 @@ Build image, kiểm tra artifacts runtime (`dist/boot.js`, `dist/db/prepare.js`)
 
 ### Chính sách commit
 
-Hai script thực thi chất lượng commit qua Husky hooks:
+Hook pre-commit (`yarn check` + `npx lint-staged`) cùng hai script chuyên dụng thực thi chất lượng commit:
 
+- `lint-staged` — tự động định dạng file staged `*.ts`, `*.tsx`, `*.vue`, `*.json`, `*.md`, `*.yaml`, `*.yml` với ESLint và Prettier.
 - `scripts/check-commit-size.sh` — cảnh báo >600 dòng, lỗi >1000 dòng (strict mode). **Biến môi trường**: `STRICT=true/false` (chế độ lỗi), `MODE=staged|commit` (mặc định staged), `BEFORE=<sha>` (so sánh với commit cụ thể). File lock, snapshot, và file sinh tự động được miễn trừ.
 - `scripts/check-commit-message.mjs` — kiểm tra subject ≤72 ký tự, body dùng `- ` bullets, body bắt buộc. Commit Merge và Revert được phép ngoại lệ.
+
+Ngưỡng coverage (80% statements, 75% branches, 80% functions, 80% lines) được áp dụng trong CI qua `vitest.config.ts`. Bất kỳ commit nào làm giảm coverage dưới ngưỡng sẽ làm CI thất bại.
 
 > **Lưu trữ dữ liệu**: Mount volume vào `/app/data` để giữ database SQLite khi container khởi động lại. Nếu không có volume, dữ liệu sẽ mất khi xóa container.
 
