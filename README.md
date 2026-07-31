@@ -17,11 +17,11 @@ A full-stack CRUD application inspired by [json-server](https://github.com/typic
 - **Full Vue 3 SPA dashboard** — 14 components, 8 pages, dark mode, responsive layout, toast notifications, and admin settings panel. Not just an API — a complete management UI.
 - **Dual API surface, single business logic** — REST (`/api/:resource`) and tRPC (`trpc.json.*`) both delegate to the same typed procedures. Write once, consume from any client.
 - **End-to-end type safety** — TypeScript 6 on both sides, tRPC bridges the gap without code generation, Zod validates at every boundary. Zero type gaps between database and UI.
-- **100% test coverage** — **50 test files** across backend and frontend achieve 100% on statements, branches, functions, and lines. Integration tests run against real SQLite + HTTP; component tests use `@vue/test-utils` with jsdom.
+- **100% test coverage** — **69 test files** across backend and frontend achieve 100% on statements, branches, functions, and lines. Integration tests run against real SQLite + HTTP; component tests use `@vue/test-utils` with jsdom. E2E browser tests use Playwright.
 - **Drizzle ORM with libSQL (Turso-compatible)** — Start with local SQLite, scale to a distributed Turso database. Same code, zero rewrite.
 - **Multi-tier rate limiting with circuit breaker** — Redis-backed Lua scripting (INCR+PEXPIRE) for atomic counting → in-memory LRU fallback (10k entries, progressive block durations: 5m→20m→1h) → allow-all. Circuit breaker opens after 3 Redis failures (30s), with exponential backoff retries. Request cost weighting: GET=1, POST/PUT/PATCH=2, DELETE=3.
 - **Production-hardened Docker** — Multi-stage build, non-root user, automatic migration + seeding on startup, all config via environment variables.
-- **Professional developer experience** — Husky pre-commit hooks, commitlint (conventional commits), GitHub Actions CI matrix across Node 22/24/26, automated coverage enforcement.
+- **Professional developer experience** — Husky pre-commit hooks, commitlint (conventional commits), lint-staged auto-formatting, GitHub Actions CI matrix across Node 22/24/26, automated coverage enforcement (80% threshold), Dependabot dependency updates, Playwright E2E browser tests, and changelog generation.
 
 ---
 
@@ -40,9 +40,9 @@ A full-stack CRUD application inspired by [json-server](https://github.com/typic
 | Validation | [Zod](https://zod.dev/) |
 | Caching | Redis via [ioredis](https://github.com/redis/ioredis) |
 | Auth | Argon2 via `@node-rs/argon2` |
-| Testing | [Vitest](https://vitest.dev/), `@vue/test-utils`, jsdom |
+| Testing | [Vitest](https://vitest.dev/), `@vue/test-utils`, jsdom, [Playwright](https://playwright.dev/) |
 | CI | GitHub Actions (matrix: Node 22, 24, 26) |
-| Lint / Format | ESLint, Prettier, commitlint, Husky |
+| Lint / Format | ESLint, Prettier, commitlint, Husky, lint-staged |
 
 ---
 
@@ -167,6 +167,7 @@ Open http://localhost:3000 — both the API and the SPA are served by the Vite d
 | `yarn db:seed` | Seed main data from JSONPlaceholder |
 | `yarn db:seed:settings` | Seed settings table |
 | `yarn db:seed:admin` | Seed admin credentials |
+| `yarn test:e2e` | Run Playwright E2E browser tests |
 
 ---
 
@@ -216,6 +217,18 @@ Open http://localhost:3000 — both the API and the SPA are served by the Vite d
 │   ├── pages/                  # 8 page components
 │   └── __tests__/              # Frontend test suite (31 files)
 ├── manual/                     # Curl test scripts (REST + tRPC)
+├── web/
+│   └── e2e/                    # Playwright E2E browser tests
+├── .github/
+│   ├── dependabot.yml          # Automated dependency updates
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── ISSUE_TEMPLATE/         # Bug report + feature request templates
+├── .editorconfig               # Cross-editor coding style
+├── .gitattributes              # Line ending normalization
+├── SECURITY.md                 # Vulnerability reporting policy
+├── CODE_OF_CONDUCT.md          # Contributor Covenant
+├── CHANGELOG.md                # Auto-generated release log
+├── playwright.config.ts        # E2E test configuration
 ├── Dockerfile                  # Multi-stage production build
 ├── docker-compose.yml          # Docker Compose config
 ├── docker-entrypoint.sh        # Entrypoint with auto-seed
@@ -268,22 +281,26 @@ trpc.json.<resource>.count()
 ## Testing
 
 ```bash
-# Run all tests
+# Run all tests (excluding E2E)
 yarn test
 
-# With coverage
+# With coverage (80% threshold enforced)
 yarn test:coverage
 
 # Watch mode
 yarn test:watch
+
+# E2E browser tests
+yarn test:e2e
 ```
 
-The project enforces **100% code coverage**. The test suite comprises:
+The project enforces **100% code coverage** (minimum 80% threshold configured in vitest). The test suite comprises:
 
-- **API tests** (19 files, `node` environment): Full integration tests covering all REST endpoints, tRPC procedures, rate limiting, Redis caching, admin auth, settings, environment config, database seeding, and edge cases.
-- **Frontend tests** (31 files, `jsdom` environment): Component tests for all UI primitives, pages, layouts; composable tests for auth, theme, and CRUD; utility tests for token helpers and string parsing.
+- **API tests** (25 files, `node` environment): Full integration tests covering all REST endpoints, tRPC procedures, rate limiting, Redis caching, admin auth, settings, environment config, database seeding, and edge cases.
+- **Frontend tests** (40 files, `jsdom` environment): Component tests for all UI primitives, pages, layouts; composable tests for auth, theme, and CRUD; utility tests for token helpers and string parsing.
+- **E2E tests** (1 file, Playwright): Browser-level tests covering admin login, settings editing, and logout flow against a real running server.
 
-Backend tests use an in-memory SQLite database and seed synthetic data per test. Frontend tests mock tRPC calls, Vue Router, and Lucide icons for isolated component testing.
+Backend tests use an in-memory SQLite database and seed synthetic data per test. Frontend tests mock tRPC calls, Vue Router, and Lucide icons for isolated component testing. E2E tests start the full application via Vite dev server and run against a real browser.
 
 ---
 
@@ -358,10 +375,13 @@ Builds the image, verifies runtime artifacts (`dist/boot.js`, `dist/db/prepare.j
 
 ### Commit policies
 
-Two scripts enforce commit quality via Husky pre-commit hooks:
+The pre-commit hook (`yarn check` + `npx lint-staged`) plus two dedicated scripts enforce commit quality:
 
+- `lint-staged` — auto-formats staged `*.ts`, `*.tsx`, `*.vue`, `*.json`, `*.md`, `*.yaml`, `*.yml` files with ESLint and Prettier.
 - `scripts/check-commit-size.sh` — warns on >600 handwritten lines, fails >1000 (strict mode). **Environment variables**: `STRICT=true/false` (fail mode), `MODE=staged|commit` (default staged), `BEFORE=<sha>` (compare against a specific commit). Lockfiles, snapshots, and generated files are exempt.
 - `scripts/check-commit-message.mjs` — validates subject ≤72 chars, body uses `- ` bullets, body is required. Merge and Revert commits are allowlisted.
+
+Coverage thresholds (80% statements, 75% branches, 80% functions, 80% lines) are enforced in CI via `vitest.config.ts`. Any commit that drops coverage below these thresholds fails the build.
 
 > **Volume persistence**: Mount a volume to `/app/data` to persist the SQLite database across container restarts. Without a volume, all data is lost when the container is removed.
 
