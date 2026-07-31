@@ -63,10 +63,14 @@ jobs:
       - name: Test commit coverage verifier isolation
         run: yarn test:coverage-verifier
       - name: Check commit message
+        if: github.actor != 'dependabot[bot]'
         run: |
           commits=$(scripts/select-commit-range.sh "${{ github.event_name }}" "${{ github.base_ref }}" "${{ github.event.before }}" "${{ github.sha }}")
           if [ -n "$commits" ]; then
             while IFS= read -r commit; do
+              if [ "$(git log -1 --format='%an' "$commit")" = "dependabot[bot]" ]; then
+                continue
+              fi
               git log --format='%B' -1 "$commit" | node scripts/check-commit-message.mjs /dev/stdin
             done <<< "$commits"
           fi

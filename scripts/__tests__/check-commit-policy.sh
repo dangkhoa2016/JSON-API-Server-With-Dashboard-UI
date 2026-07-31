@@ -5,6 +5,7 @@ echo "=== Test: commit policy enforcement ==="
 
 MSG_SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/scripts/check-commit-message.mjs"
 SIZE_SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/scripts/check-commit-size.sh"
+CI_FILE="$(cd "$(dirname "$0")/../.." && pwd)/.github/workflows/ci.yml"
 
 MSG_REPO=$(mktemp -d)
 SIZE_REPO=$(mktemp -d)
@@ -167,6 +168,71 @@ if node "$MSG_SCRIPT" conv-breaking.txt 2>&1; then echo "PASS: accepted breaking
 
 echo ""
 echo "=== All message policy tests PASS ==="
+
+echo ""
+echo "=== CI policy structure tests ==="
+
+[ -f "$CI_FILE" ] || { echo "FAIL: $CI_FILE missing"; exit 1; }
+
+python3 - "$CI_FILE" << 'PY'
+import re, sys
+
+path = sys.argv[1]
+text = open(path, encoding='utf-8').read()
+
+m = re.search(r'^  commit-policy:\n((?:.|\n)*?)(?=^  [a-zA-Z0-9_-]+:\n)', text, re.M)
+if not m:
+    print("FAIL: commit-policy job block not found")
+    sys.exit(1)
+block = m.group(1)
+
+# Job-level dependabot skip is not allowed: only the message step may be exempt.
+if re.search(r'^    if: .*dependabot', block, re.M):
+    print("FAIL: job-level dependabot condition present")
+    sys.exit(1)
+
+steps = {}
+cur_name = None
+for line in block.splitlines():
+    sm = re.match(r'^      - name: (.+)$', line)
+    if sm:
+        cur_name = sm.group(1)
+        steps[cur_name] = []
+    elif cur_name is not None:
+        steps[cur_name].append(line)
+steps = {name: '\n'.join(body) for name, body in steps.items()}
+
+
+def has_dependabot(body):
+    return bool(re.search(r'github\.actor\s*!=\s*[^ \n]*dependabot', body))
+
+
+message = steps.get("Check commit message")
+if message is None:
+    print("FAIL: 'Check commit message' step not found")
+    sys.exit(1)
+if not has_dependabot(message):
+    print("FAIL: 'Check commit message' step missing dependabot condition")
+    sys.exit(1)
+if "--format='%an'" not in message or '"dependabot[bot]"' not in message:
+    print("FAIL: 'Check commit message' step missing dependabot author-name skip")
+    sys.exit(1)
+
+for name in (
+    "Test commit coverage verifier isolation",
+    "Check commit size",
+    "Check per-commit coverage recovery",
+):
+    body = steps.get(name)
+    if body is None:
+        print("FAIL: step '%s' not found" % name)
+        sys.exit(1)
+    if has_dependabot(body):
+        print("FAIL: step '%s' has dependabot condition" % name)
+        sys.exit(1)
+
+print("PASS: CI policy structure")
+PY
 
 echo ""
 echo "=== Size policy tests ==="
