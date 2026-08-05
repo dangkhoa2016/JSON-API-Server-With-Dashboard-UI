@@ -1,7 +1,7 @@
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install --global corepack && corepack enable
 
 COPY .yarnrc.yml .yarn ./
 COPY package.json yarn.lock ./
@@ -10,14 +10,14 @@ RUN yarn install --frozen-lockfile
 COPY . .
 RUN yarn build
 
-FROM node:22-alpine
+FROM node:26-alpine
 WORKDIR /app
 
 RUN apk add --no-cache tini && \
     addgroup -S app && \
     adduser -S app app
 
-RUN corepack enable
+RUN npm install --global corepack && corepack enable
 
 COPY .yarnrc.yml ./
 COPY --from=builder /app/yarn.lock ./
