@@ -3,7 +3,7 @@ WORKDIR /app
 
 RUN npm install --global corepack && corepack enable
 
-COPY .yarnrc.yml .yarn ./
+COPY .yarnrc.yml ./
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 

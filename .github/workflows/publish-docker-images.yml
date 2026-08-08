@@ -1,0 +1,461 @@
+name: Publish Docker images
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-docker-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: dangkhoa2016/json-api-server-with-dashboard-ui
+  IMAGE_TITLE: JSON API Server With Dashboard UI
+  IMAGE_DESCRIPTION: Full-stack CRUD application with REST + tRPC API and Vue 3 dashboard UI
+  IMAGE_SOURCE: https://github.com/dangkhoa2016/JSON-API-Server-With-Dashboard-UI
+  IMAGE_LICENSE: MIT
+  IMAGE_VERSION: 1.0.0
+  IMAGE_VERSION_TAG: v1
+
+jobs:
+  publish:
+    name: Build and publish multi-platform image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Resolve source revision
+        id: source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Commit: ${SHA}"
+          echo "Short:  ${SHORT_SHA}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push canonical multi-platform image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: |
+            linux/amd64
+            linux/arm64
+          push: true
+
+          # These aliases all point to the same canonical multi-platform index.
+          # GHCR should render them as one tagged package-version row.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION_TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-${{ steps.source.outputs.short_sha }}
+
+          # OCI image-config labels embedded in each runnable platform image.
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_TITLE }}
+            org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
+            org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
+            org.opencontainers.image.url=${{ env.IMAGE_SOURCE }}
+            org.opencontainers.image.licenses=${{ env.IMAGE_LICENSE }}
+            org.opencontainers.image.version=${{ env.IMAGE_VERSION }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+
+          # Top-level index metadata plus platform-specific runnable-manifest
+          # metadata, so direct GHCR architecture pages remain descriptive.
+          annotations: |
+            index:org.opencontainers.image.title=${{ env.IMAGE_TITLE }}
+            index:org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}
+            index:org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
+            index:org.opencontainers.image.url=${{ env.IMAGE_SOURCE }}
+            index:org.opencontainers.image.licenses=${{ env.IMAGE_LICENSE }}
+            index:org.opencontainers.image.version=${{ env.IMAGE_VERSION }}
+            index:org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            manifest[linux/amd64]:org.opencontainers.image.title=${{ env.IMAGE_TITLE }} - linux/amd64
+            manifest[linux/amd64]:org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }} Platform: linux/amd64.
+            manifest[linux/amd64]:org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
+            manifest[linux/amd64]:org.opencontainers.image.url=${{ env.IMAGE_SOURCE }}
+            manifest[linux/amd64]:org.opencontainers.image.licenses=${{ env.IMAGE_LICENSE }}
+            manifest[linux/amd64]:org.opencontainers.image.version=${{ env.IMAGE_VERSION }}
+            manifest[linux/amd64]:org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            manifest[linux/arm64]:org.opencontainers.image.title=${{ env.IMAGE_TITLE }} - linux/arm64
+            manifest[linux/arm64]:org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }} Platform: linux/arm64.
+            manifest[linux/arm64]:org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
+            manifest[linux/arm64]:org.opencontainers.image.url=${{ env.IMAGE_SOURCE }}
+            manifest[linux/arm64]:org.opencontainers.image.licenses=${{ env.IMAGE_LICENSE }}
+            manifest[linux/arm64]:org.opencontainers.image.version=${{ env.IMAGE_VERSION }}
+            manifest[linux/arm64]:org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+
+          cache-from: type=gha,scope=json-api-server-dashboard
+          cache-to: type=gha,mode=max,scope=json-api-server-dashboard
+
+          # Keep full BuildKit/SLSA provenance. With two runnable platforms,
+          # GHCR is expected to expose two attestation objects as untagged rows.
+          provenance: mode=max
+
+      - name: Resolve platform manifest digests
+        id: platforms
+        shell: bash
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          INDEX_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -Eeuo pipefail
+          INDEX_REF="${IMAGE}@${INDEX_DIGEST}"
+
+          inspect_raw_with_retry() {
+            local ref="$1"
+            local output=""
+            local attempt
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if output="$(docker buildx imagetools inspect "${ref}" --raw 2>/tmp/imagetools-resolve.err)"; then
+                printf '%s' "${output}"
+                return 0
+              fi
+              echo "Registry has not exposed ${ref} yet (attempt ${attempt}/10)." >&2
+              sleep 3
+            done
+            echo "::error::Unable to inspect ${ref} after 10 attempts." >&2
+            [[ ! -s /tmp/imagetools-resolve.err ]] || cat /tmp/imagetools-resolve.err >&2
+            return 1
+          }
+
+          echo "Canonical immutable index: ${INDEX_REF}"
+          INDEX_JSON="$(inspect_raw_with_retry "${INDEX_REF}")"
+
+          if ! jq -e '(.manifests? // []) | length > 0' <<< "${INDEX_JSON}" >/dev/null; then
+            echo "::error::Build output is not a multi-platform image index."
+            exit 1
+          fi
+
+          AMD64_DIGEST="$(
+            jq -er '
+              [.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+              | if length == 1 then .[0].digest
+                else error("Expected exactly one linux/amd64 runnable manifest")
+                end
+            ' <<< "${INDEX_JSON}"
+          )"
+
+          ARM64_DIGEST="$(
+            jq -er '
+              [.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64")]
+              | if length == 1 then .[0].digest
+                else error("Expected exactly one linux/arm64 runnable manifest")
+                end
+            ' <<< "${INDEX_JSON}"
+          )"
+
+          ATTESTATION_COUNT="$(
+            jq -r '
+              [
+                .manifests[]
+                | select(
+                    (.annotations["vnd.docker.reference.type"] // "")
+                    == "attestation-manifest"
+                  )
+              ]
+              | length
+            ' <<< "${INDEX_JSON}"
+          )"
+
+          if [[ "${ATTESTATION_COUNT}" != "2" ]]; then
+            echo "::error::Expected exactly 2 provenance attestation manifests."
+            echo "::error::Actual: ${ATTESTATION_COUNT}"
+            exit 1
+          fi
+
+          if ! jq -e             --arg amd64 "${AMD64_DIGEST}"             --arg arm64 "${ARM64_DIGEST}"             '
+              [
+                .manifests[]
+                | select(
+                    (.annotations["vnd.docker.reference.type"] // "")
+                    == "attestation-manifest"
+                  )
+                | .annotations["vnd.docker.reference.digest"]
+              ] as $refs
+              |
+              ($refs | map(select(. == $amd64)) | length) == 1
+              and
+              ($refs | map(select(. == $arm64)) | length) == 1
+            ' <<< "${INDEX_JSON}" >/dev/null; then
+            echo "::error::Provenance descriptors do not map 1:1 to AMD64 and ARM64."
+            exit 1
+          fi
+
+          echo "linux/amd64 = ${AMD64_DIGEST}"
+          echo "linux/arm64 = ${ARM64_DIGEST}"
+          echo "provenance  = ${ATTESTATION_COUNT} attestation manifests"
+
+          echo "amd64_digest=${AMD64_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "arm64_digest=${ARM64_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "attestation_count=${ATTESTATION_COUNT}" >> "$GITHUB_OUTPUT"
+
+      # Keep --prefer-index=false intentionally. The architecture tags must
+      # point directly at the runnable child manifests, preserving the desired
+      # GHCR layout: 3 tagged rows + 2 provenance/untagged rows.
+      - name: Create platform-specific image aliases
+        shell: bash
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          AMD64_DIGEST: ${{ steps.platforms.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.platforms.outputs.arm64_digest }}
+        run: |
+          set -Eeuo pipefail
+
+          create_alias() {
+            local arch="$1"
+            local digest="$2"
+            local target="${IMAGE}:latest-${arch}"
+            local source="${IMAGE}@${digest}"
+
+            echo "Creating ${target} -> ${source}"
+            docker buildx imagetools create               --prefer-index=false               --tag "${target}"               "${source}"
+          }
+
+          create_alias "amd64" "${AMD64_DIGEST}"
+          create_alias "arm64" "${ARM64_DIGEST}"
+
+      - name: Verify all published images and metadata
+        shell: bash
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          IMAGE_TITLE: ${{ env.IMAGE_TITLE }}
+          IMAGE_DESCRIPTION: ${{ env.IMAGE_DESCRIPTION }}
+          IMAGE_SOURCE: ${{ env.IMAGE_SOURCE }}
+          IMAGE_LICENSE: ${{ env.IMAGE_LICENSE }}
+          IMAGE_VERSION: ${{ env.IMAGE_VERSION }}
+          IMAGE_VERSION_TAG: ${{ env.IMAGE_VERSION_TAG }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SHORT_SHA: ${{ steps.source.outputs.short_sha }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          AMD64_DIGEST: ${{ steps.platforms.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.platforms.outputs.arm64_digest }}
+        run: |
+          set -Eeuo pipefail
+
+          inspect_with_retry() {
+            local mode="$1"
+            local ref="$2"
+            local output=""
+            local attempt
+
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              case "${mode}" in
+                raw)
+                  output="$(docker buildx imagetools inspect "${ref}" --raw 2>/tmp/imagetools-verify.err)" && {
+                    printf '%s' "${output}"
+                    return 0
+                  }
+                  ;;
+                manifest)
+                  output="$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' 2>/tmp/imagetools-verify.err)" && {
+                    printf '%s' "${output}"
+                    return 0
+                  }
+                  ;;
+                image)
+                  output="$(docker buildx imagetools inspect "${ref}" --format '{{json .Image}}' 2>/tmp/imagetools-verify.err)" && {
+                    printf '%s' "${output}"
+                    return 0
+                  }
+                  ;;
+                *)
+                  echo "::error::Unknown inspect mode: ${mode}" >&2
+                  return 1
+                  ;;
+              esac
+
+              echo "Waiting for registry consistency: ${ref} (attempt ${attempt}/10)" >&2
+              sleep 3
+            done
+
+            echo "::error::Unable to inspect ${ref} after 10 attempts." >&2
+            [[ ! -s /tmp/imagetools-verify.err ]] || cat /tmp/imagetools-verify.err >&2
+            return 1
+          }
+
+          verify_canonical_tag() {
+            local ref="$1"
+            local manifest_json
+            local actual_digest
+
+            echo
+            echo "Verifying canonical tag: ${ref}"
+            manifest_json="$(inspect_with_retry manifest "${ref}")"
+            actual_digest="$(jq -er '.digest' <<< "${manifest_json}")"
+
+            if [[ "${actual_digest}" != "${BUILD_DIGEST}" ]]; then
+              echo "::error::${ref} resolves to the wrong canonical digest."
+              echo "::error::Expected: ${BUILD_DIGEST}"
+              echo "::error::Actual:   ${actual_digest}"
+              exit 1
+            fi
+
+            if ! jq -e               --arg amd64 "${AMD64_DIGEST}"               --arg arm64 "${ARM64_DIGEST}"               --arg title "${IMAGE_TITLE}"               --arg description "${IMAGE_DESCRIPTION}"               --arg source "${IMAGE_SOURCE}"               --arg license "${IMAGE_LICENSE}"               --arg version "${IMAGE_VERSION}"               --arg revision "${SOURCE_SHA}"               '
+                (.manifests? // []) as $m
+                |
+                ([$m[] | select(.platform.os == "linux" and .platform.architecture == "amd64" and .digest == $amd64)] | length) == 1
+                and
+                ([$m[] | select(.platform.os == "linux" and .platform.architecture == "arm64" and .digest == $arm64)] | length) == 1
+                and (.annotations["org.opencontainers.image.title"] // "") == $title
+                and (.annotations["org.opencontainers.image.description"] // "") == $description
+                and (.annotations["org.opencontainers.image.source"] // "") == $source
+                and (.annotations["org.opencontainers.image.url"] // "") == $source
+                and (.annotations["org.opencontainers.image.licenses"] // "") == $license
+                and (.annotations["org.opencontainers.image.version"] // "") == $version
+                and (.annotations["org.opencontainers.image.revision"] // "") == $revision
+              ' <<< "${manifest_json}" >/dev/null; then
+              echo "::error::${ref} failed canonical platform/metadata verification."
+              exit 1
+            fi
+
+            echo "  OK: ${actual_digest}"
+          }
+
+          verify_platform_alias() {
+            local arch="$1"
+            local expected_digest="$2"
+            local ref="${IMAGE}:latest-${arch}"
+            local manifest_json raw_json image_json actual_digest
+            local expected_title expected_description
+
+            expected_title="${IMAGE_TITLE} - linux/${arch}"
+            expected_description="${IMAGE_DESCRIPTION} Platform: linux/${arch}."
+
+            echo
+            echo "Verifying direct platform alias: ${ref}"
+
+            manifest_json="$(inspect_with_retry manifest "${ref}")"
+            raw_json="$(inspect_with_retry raw "${ref}")"
+            image_json="$(inspect_with_retry image "${ref}")"
+            actual_digest="$(jq -er '.digest' <<< "${manifest_json}")"
+
+            if [[ "${actual_digest}" != "${expected_digest}" ]]; then
+              echo "::error::${ref} resolves to the wrong child manifest."
+              echo "::error::Expected: ${expected_digest}"
+              echo "::error::Actual:   ${actual_digest}"
+              exit 1
+            fi
+
+            if jq -e '(.manifests? // []) | length > 0' <<< "${raw_json}" >/dev/null; then
+              echo "::error::${ref} unexpectedly resolves to an image index."
+              exit 1
+            fi
+
+            if ! jq -e '
+              .mediaType == "application/vnd.oci.image.manifest.v1+json"
+              or
+              .mediaType == "application/vnd.docker.distribution.manifest.v2+json"
+            ' <<< "${raw_json}" >/dev/null; then
+              echo "::error::${ref} has an unexpected manifest media type."
+              exit 1
+            fi
+
+            if ! jq -e               --arg title "${expected_title}"               --arg description "${expected_description}"               --arg source "${IMAGE_SOURCE}"               --arg license "${IMAGE_LICENSE}"               --arg version "${IMAGE_VERSION}"               --arg revision "${SOURCE_SHA}"               '
+                (.annotations["org.opencontainers.image.title"] // "") == $title
+                and (.annotations["org.opencontainers.image.description"] // "") == $description
+                and (.annotations["org.opencontainers.image.source"] // "") == $source
+                and (.annotations["org.opencontainers.image.url"] // "") == $source
+                and (.annotations["org.opencontainers.image.licenses"] // "") == $license
+                and (.annotations["org.opencontainers.image.version"] // "") == $version
+                and (.annotations["org.opencontainers.image.revision"] // "") == $revision
+              ' <<< "${raw_json}" >/dev/null; then
+              echo "::error::${ref} is missing expected platform OCI annotations."
+              exit 1
+            fi
+
+            if ! jq -e               --arg arch "${arch}"               --arg title "${IMAGE_TITLE}"               --arg description "${IMAGE_DESCRIPTION}"               --arg source "${IMAGE_SOURCE}"               --arg license "${IMAGE_LICENSE}"               --arg version "${IMAGE_VERSION}"               --arg revision "${SOURCE_SHA}"               '
+                .os == "linux"
+                and .architecture == $arch
+                and (.config.Labels["org.opencontainers.image.title"] // "") == $title
+                and (.config.Labels["org.opencontainers.image.description"] // "") == $description
+                and (.config.Labels["org.opencontainers.image.source"] // "") == $source
+                and (.config.Labels["org.opencontainers.image.url"] // "") == $source
+                and (.config.Labels["org.opencontainers.image.licenses"] // "") == $license
+                and (.config.Labels["org.opencontainers.image.version"] // "") == $version
+                and (.config.Labels["org.opencontainers.image.revision"] // "") == $revision
+              ' <<< "${image_json}" >/dev/null; then
+              echo "::error::${ref} failed image-config metadata verification."
+              exit 1
+            fi
+
+            echo "  OK: linux/${arch}"
+            echo "  OK: ${actual_digest}"
+            echo "  OK: direct image manifest + OCI metadata"
+          }
+
+          verify_canonical_tag "${IMAGE}:latest"
+          verify_canonical_tag "${IMAGE}:${IMAGE_VERSION_TAG}"
+          verify_canonical_tag "${IMAGE}:latest-${SHORT_SHA}"
+          verify_platform_alias "amd64" "${AMD64_DIGEST}"
+          verify_platform_alias "arm64" "${ARM64_DIGEST}"
+
+      - name: Write publication summary
+        if: success()
+        shell: bash
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          IMAGE_VERSION_TAG: ${{ env.IMAGE_VERSION_TAG }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SHORT_SHA: ${{ steps.source.outputs.short_sha }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          AMD64_DIGEST: ${{ steps.platforms.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.platforms.outputs.arm64_digest }}
+          ATTESTATION_COUNT: ${{ steps.platforms.outputs.attestation_count }}
+        run: |
+          set -Eeuo pipefail
+          {
+            echo "## Docker publication"
+            echo
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Source revision | \`${SOURCE_SHA}\` |"
+            echo "| Canonical digest | \`${BUILD_DIGEST}\` |"
+            echo "| linux/amd64 digest | \`${AMD64_DIGEST}\` |"
+            echo "| linux/arm64 digest | \`${ARM64_DIGEST}\` |"
+            echo "| Provenance manifests | \`${ATTESTATION_COUNT}\` |"
+            echo
+            echo "### Canonical tags"
+            echo "- \`${IMAGE}:latest\`"
+            echo "- \`${IMAGE}:${IMAGE_VERSION_TAG}\`"
+            echo "- \`${IMAGE}:latest-${SHORT_SHA}\`"
+            echo
+            echo "### Architecture tags"
+            echo "- \`${IMAGE}:latest-amd64\`"
+            echo "- \`${IMAGE}:latest-arm64\`"
+            echo
+            echo "Expected GHCR layout after old versions are cleaned up:"
+            echo "- **3 tagged version rows**"
+            echo "- **2 untagged provenance/attestation rows**"
+          } >> "$GITHUB_STEP_SUMMARY"
