@@ -26,8 +26,8 @@ describe("redis (disabled)", () => {
     redis = await import("../lib/redis");
   });
 
-  it("getRedis returns null when redis is disabled", () => {
-    expect(redis.getRedis()).toBeNull();
+  it("getRedis returns null when redis is disabled", async () => {
+    expect(await redis.getRedis()).toBeNull();
   });
 
   it("getCache returns null when redis is disabled", async () => {
@@ -61,7 +61,11 @@ describe("redis (enabled)", () => {
       scan: vi.fn().mockResolvedValue(["0", []]),
       on: vi.fn(),
     };
-    vi.doMock("ioredis", () => ({ default: function() { return mockRedis; } }));
+    vi.doMock("ioredis", () => ({
+      default: function () {
+        return mockRedis;
+      },
+    }));
     vi.doMock("../lib/env", () => ({
       env: {
         appSecret: "test",
@@ -84,14 +88,14 @@ describe("redis (enabled)", () => {
 
   it("getRedis creates and returns a client when redis is enabled", async () => {
     const redis = await import("../lib/redis");
-    const client = redis.getRedis();
+    const client = await redis.getRedis();
     expect(client).not.toBeNull();
   });
 
   it("getRedis returns existing client on second call", async () => {
     const redis = await import("../lib/redis");
-    const client1 = redis.getRedis();
-    const client2 = redis.getRedis();
+    const client1 = await redis.getRedis();
+    const client2 = await redis.getRedis();
     expect(client1).toBe(client2);
   });
 
@@ -116,18 +120,36 @@ describe("redis (enabled)", () => {
   });
 
   it("invalidateCache calls r.scan and r.del when keys match", async () => {
-    mockRedis.scan.mockResolvedValueOnce(["0", ["cache:users:1", "cache:users:2"]]);
+    mockRedis.scan.mockResolvedValueOnce([
+      "0",
+      ["cache:users:1", "cache:users:2"],
+    ]);
     const redis = await import("../lib/redis");
     await redis.invalidateCache("cache:users:*");
-    expect(mockRedis.scan).toHaveBeenCalledWith("0", "MATCH", "cache:users:*", "COUNT", 100);
-    expect(mockRedis.del).toHaveBeenCalledWith("cache:users:1", "cache:users:2");
+    expect(mockRedis.scan).toHaveBeenCalledWith(
+      "0",
+      "MATCH",
+      "cache:users:*",
+      "COUNT",
+      100
+    );
+    expect(mockRedis.del).toHaveBeenCalledWith(
+      "cache:users:1",
+      "cache:users:2"
+    );
   });
 
   it("invalidateCache does not call r.del when no keys match", async () => {
     mockRedis.scan.mockResolvedValueOnce(["0", []]);
     const redis = await import("../lib/redis");
     await redis.invalidateCache("cache:none:*");
-    expect(mockRedis.scan).toHaveBeenCalledWith("0", "MATCH", "cache:none:*", "COUNT", 100);
+    expect(mockRedis.scan).toHaveBeenCalledWith(
+      "0",
+      "MATCH",
+      "cache:none:*",
+      "COUNT",
+      100
+    );
     expect(mockRedis.del).not.toHaveBeenCalled();
   });
 

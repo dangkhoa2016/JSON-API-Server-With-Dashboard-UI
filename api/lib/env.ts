@@ -29,7 +29,10 @@ function optionalBool(name: string, defaultValue: boolean): boolean {
 }
 
 export const env = {
-  appSecret: requiredInProduction("APP_SECRET", crypto.randomBytes(32).toString("hex")),
+  appSecret: requiredInProduction(
+    "APP_SECRET",
+    crypto.randomBytes(32).toString("hex")
+  ),
   isProduction: process.env.NODE_ENV === "production",
   databaseUrl: requiredInProduction("DATABASE_URL", DEFAULT_DATABASE_URL),
   // Redis config
@@ -38,6 +41,7 @@ export const env = {
   redisPassword: optional("REDIS_PASSWORD", ""),
   redisDb: optionalInt("REDIS_DB", 0),
   redisEnabled: optionalBool("REDIS_ENABLED", false),
+  redisUrl: optional("REDIS_URL", ""),
   // Rate limit config
   rateLimitEnabled: optionalBool("RATE_LIMIT_ENABLED", true),
   rateLimitWindowMs: optionalInt("RATE_LIMIT_WINDOW_MS", 60000),
@@ -54,9 +58,9 @@ export const env = {
     if (process.env.NODE_ENV === "production" && raw === "*") {
       throw new Error(
         'CORS_ORIGINS cannot be "*" in production. ' +
-        "Set explicit origins like " +
-        '"https://example.com,https://admin.example.com" ' +
-        'or "http://localhost:5173,http://localhost:4173" for development.',
+          "Set explicit origins like " +
+          '"https://example.com,https://admin.example.com" ' +
+          'or "http://localhost:5173,http://localhost:4173" for development.'
       );
     }
     const list = raw
@@ -66,7 +70,10 @@ export const env = {
     const unique = [...new Set(list)];
     return unique.length === 1 && unique[0] === "*" ? "*" : unique;
   })(),
-  trustedProxyCidrs: optional("TRUSTED_PROXY_CIDRS", "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+  trustedProxyCidrs: optional(
+    "TRUSTED_PROXY_CIDRS",
+    "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  )
     .split(",")
     .map((s: string) => s.trim())
     .filter(Boolean),

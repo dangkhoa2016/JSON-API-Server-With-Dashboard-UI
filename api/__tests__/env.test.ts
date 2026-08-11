@@ -63,9 +63,7 @@ describe("env", () => {
 
     await expect(async () => {
       await import("../lib/env");
-    })
-      .rejects
-      .toThrow();
+    }).rejects.toThrow();
   });
 
   it("uses default value when required var is missing in non-production", async () => {
@@ -119,6 +117,15 @@ describe("env", () => {
 
     const { env } = await import("../lib/env");
     expect(env.redisEnabled).toBe(false);
+  });
+
+  it("parses optional REDIS_URL", async () => {
+    process.env.APP_SECRET = "test";
+    process.env.DATABASE_URL = ":memory:";
+    process.env.REDIS_URL = "redis://cache:6379/0";
+
+    const { env } = await import("../lib/env");
+    expect(env.redisUrl).toBe("redis://cache:6379/0");
   });
 
   describe("corsOriginList", () => {

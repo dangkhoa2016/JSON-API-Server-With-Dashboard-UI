@@ -1,31 +1,61 @@
 import Redis from "ioredis";
+import type { RedisOptions } from "ioredis";
+import { eq } from "drizzle-orm";
 import { env } from "./env";
+import { getDb } from "../queries/connection";
+import * as schema from "@db/schema";
 
-let redisInstance: Redis | null = null;
+let initPromise: Promise<Redis | null> | null = null;
 
-export function getRedis(): Redis | null {
-  if (!env.redisEnabled) return null;
-  if (!redisInstance) {
-    redisInstance = new Redis({
-      host: env.redisHost,
-      port: env.redisPort,
-      password: env.redisPassword || undefined,
-      db: env.redisDb,
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times) => {
-        if (times > 3) return null;
-        return Math.min(times * 100, 1000);
-      },
-    });
-    redisInstance.on("error", (err) => {
-      console.warn("Redis connection error:", err.message);
-    });
+const redisOptions: RedisOptions = {
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times: number) => {
+    if (times > 3) return null;
+    return Math.min(times * 100, 1000);
+  },
+};
+
+async function loadRedisUrlFromDb(): Promise<string | undefined> {
+  try {
+    const db = getDb();
+    const row = await db
+      .select()
+      .from(schema.settings)
+      .where(eq(schema.settings.key, "REDIS_URL"))
+      .get();
+    const url = row?.value?.trim();
+    return url || undefined;
+  } catch {
+    return undefined;
   }
-  return redisInstance;
+}
+
+export async function getRedis(): Promise<Redis | null> {
+  if (!env.redisEnabled) return null;
+  if (!initPromise) {
+    initPromise = (async () => {
+      const dbUrl = await loadRedisUrlFromDb();
+      const url = dbUrl ?? env.redisUrl;
+      const client = url
+        ? new Redis(url, redisOptions)
+        : new Redis({
+            host: env.redisHost,
+            port: env.redisPort,
+            password: env.redisPassword || undefined,
+            db: env.redisDb,
+            ...redisOptions,
+          });
+      client.on("error", err => {
+        console.warn("Redis connection error:", err.message);
+      });
+      return client;
+    })();
+  }
+  return initPromise;
 }
 
 export async function getCache(key: string): Promise<string | null> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return null;
   try {
     return await redis.get(key);
@@ -35,8 +65,12 @@ export async function getCache(key: string): Promise<string | null> {
   }
 }
 
-export async function setCache(key: string, value: string, ttlSeconds?: number): Promise<void> {
-  const redis = getRedis();
+export async function setCache(
+  key: string,
+  value: string,
+  ttlSeconds?: number
+): Promise<void> {
+  const redis = await getRedis();
   if (!redis) return;
   try {
     const ttl = ttlSeconds ?? env.cacheTtlSeconds;
@@ -47,7 +81,7 @@ export async function setCache(key: string, value: string, ttlSeconds?: number):
 }
 
 export async function deleteCache(key: string): Promise<void> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return;
   try {
     await redis.del(key);
@@ -57,12 +91,18 @@ export async function deleteCache(key: string): Promise<void> {
 }
 
 export async function invalidateCache(pattern: string): Promise<void> {
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis) return;
   try {
     let cursor = "0";
     do {
-      const [nextCursor, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+      const [nextCursor, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        pattern,
+        "COUNT",
+        100
+      );
       cursor = nextCursor;
       if (keys.length > 0) {
         await redis.del(...keys);

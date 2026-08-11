@@ -36,42 +36,51 @@ vi.mock("../lib/env", () => ({
   },
 }));
 
-import { getRedis, getCache, setCache, deleteCache, invalidateCache } from "../lib/redis";
+import {
+  getRedis,
+  getCache,
+  setCache,
+  deleteCache,
+  invalidateCache,
+} from "../lib/redis";
 
 describe("redis with mocked Redis", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("getRedis returns a Redis instance", () => {
-    const redis = getRedis();
+  it("getRedis returns a Redis instance", async () => {
+    const redis = await getRedis();
     expect(redis).not.toBeNull();
     expect(typeof redis!.get).toBe("function");
   });
 
-  it("getRedis returns the same instance on subsequent calls", () => {
-    const redis1 = getRedis();
-    const redis2 = getRedis();
+  it("getRedis returns the same instance on subsequent calls", async () => {
+    const redis1 = await getRedis();
+    const redis2 = await getRedis();
     expect(redis1).toBe(redis2);
   });
 
-  it("retryStrategy returns null after 3 retries", () => {
-    getRedis();
+  it("retryStrategy returns null after 3 retries", async () => {
+    await getRedis();
     expect(mockRedisOptions.retryStrategy(4)).toBeNull();
     expect(mockRedisOptions.retryStrategy(1)).toBeLessThanOrEqual(1000);
   });
 
-  it("handles Redis connection error events", () => {
-    getRedis();
+  it("handles Redis connection error events", async () => {
+    await getRedis();
     expect(errorHandler).toBeDefined();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     errorHandler(new Error("Connection refused"));
-    expect(warnSpy).toHaveBeenCalledWith("Redis connection error:", "Connection refused");
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Redis connection error:",
+      "Connection refused"
+    );
     warnSpy.mockRestore();
   });
 
   it("getCache returns cached value", async () => {
-    getRedis();
+    await getRedis();
     mockRedisInstance.get.mockResolvedValueOnce("cached-value");
     const result = await getCache("test-key");
     expect(result).toBe("cached-value");
@@ -79,7 +88,7 @@ describe("redis with mocked Redis", () => {
   });
 
   it("getCache returns null on error", async () => {
-    getRedis();
+    await getRedis();
     mockRedisInstance.get.mockRejectedValueOnce(new Error("Redis error"));
     const result = await getCache("test-key");
     expect(result).toBeNull();
@@ -87,12 +96,20 @@ describe("redis with mocked Redis", () => {
 
   it("setCache stores value with ttl", async () => {
     await setCache("test-key", "test-value", 120);
-    expect(mockRedisInstance.setex).toHaveBeenCalledWith("test-key", 120, "test-value");
+    expect(mockRedisInstance.setex).toHaveBeenCalledWith(
+      "test-key",
+      120,
+      "test-value"
+    );
   });
 
   it("setCache uses default ttl when not provided", async () => {
     await setCache("test-key", "test-value");
-    expect(mockRedisInstance.setex).toHaveBeenCalledWith("test-key", 60, "test-value");
+    expect(mockRedisInstance.setex).toHaveBeenCalledWith(
+      "test-key",
+      60,
+      "test-value"
+    );
   });
 
   it("setCache ignores errors", async () => {
@@ -113,14 +130,26 @@ describe("redis with mocked Redis", () => {
   it("invalidateCache deletes keys matching pattern", async () => {
     mockRedisInstance.scan.mockResolvedValueOnce(["0", ["key1", "key2"]]);
     await invalidateCache("cache:*");
-    expect(mockRedisInstance.scan).toHaveBeenCalledWith("0", "MATCH", "cache:*", "COUNT", 100);
+    expect(mockRedisInstance.scan).toHaveBeenCalledWith(
+      "0",
+      "MATCH",
+      "cache:*",
+      "COUNT",
+      100
+    );
     expect(mockRedisInstance.del).toHaveBeenCalledWith("key1", "key2");
   });
 
   it("invalidateCache does nothing when no keys match", async () => {
     mockRedisInstance.scan.mockResolvedValueOnce(["0", []]);
     await invalidateCache("cache:*");
-    expect(mockRedisInstance.scan).toHaveBeenCalledWith("0", "MATCH", "cache:*", "COUNT", 100);
+    expect(mockRedisInstance.scan).toHaveBeenCalledWith(
+      "0",
+      "MATCH",
+      "cache:*",
+      "COUNT",
+      100
+    );
     expect(mockRedisInstance.del).not.toHaveBeenCalled();
   });
 

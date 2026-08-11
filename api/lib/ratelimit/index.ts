@@ -5,9 +5,20 @@ import { settings } from "@db/schema";
 import { inArray } from "drizzle-orm";
 import { env } from "../env";
 import { getRedis } from "../redis";
-import { checkCircuitBreaker, recordFailure, recordSuccess, getCircuitBreaker, resetCircuitBreaker as resetCB } from "./circuitBreaker";
+import {
+  checkCircuitBreaker,
+  recordFailure,
+  recordSuccess,
+  getCircuitBreaker,
+  resetCircuitBreaker as resetCB,
+} from "./circuitBreaker";
 import { createInMemoryStore, triggerCleanup } from "./memStore";
-import { getClientIp, getRequestCost, normalizeIp, resolveClientIpFromHeaders } from "./ipUtils";
+import {
+  getClientIp,
+  getRequestCost,
+  normalizeIp,
+  resolveClientIpFromHeaders,
+} from "./ipUtils";
 import { expandIpv6, createCidrMatcher, isTrustedProxy } from "./cidr";
 
 const DEFAULT_WINDOW_MS = 60 * 1000;
@@ -24,7 +35,8 @@ export function cleanupExpiredEntries(): void {
 let cleanupTimer: ReturnType<typeof setInterval> | undefined;
 
 function startCleanup(): void {
-  if (!cleanupTimer) cleanupTimer = setInterval(cleanupExpiredEntries, CLEANUP_INTERVAL_MS);
+  if (!cleanupTimer)
+    cleanupTimer = setInterval(cleanupExpiredEntries, CLEANUP_INTERVAL_MS);
 }
 
 function stopCleanup(): void {
@@ -38,8 +50,19 @@ function memFallback(ip: string, max: number, windowMs: number) {
   const now = Date.now();
   let entry = memStore.get(ip);
 
-  if (!entry || (entry.windowResetAt <= now && entry.blockedUntil <= now && entry.violationResetAt <= now)) {
-    entry = { count: 0, windowResetAt: now + windowMs, blockedUntil: 0, violationCount: 0, violationResetAt: 0 };
+  if (
+    !entry ||
+    (entry.windowResetAt <= now &&
+      entry.blockedUntil <= now &&
+      entry.violationResetAt <= now)
+  ) {
+    entry = {
+      count: 0,
+      windowResetAt: now + windowMs,
+      blockedUntil: 0,
+      violationCount: 0,
+      violationResetAt: 0,
+    };
   }
 
   if (entry.blockedUntil > now) {
@@ -65,7 +88,10 @@ function memFallback(ip: string, max: number, windowMs: number) {
   let resetSeconds: number;
   if (entry.count > max) {
     entry.violationCount = (entry.violationCount || 0) + 1;
-    const idx = Math.min(entry.violationCount - 1, BLOCK_DURATIONS_SEC.length - 1);
+    const idx = Math.min(
+      entry.violationCount - 1,
+      BLOCK_DURATIONS_SEC.length - 1
+    );
     const blockSec = BLOCK_DURATIONS_SEC[idx];
     entry.blockedUntil = now + blockSec * 1000;
     entry.violationResetAt = now + blockSec * 1000 * BLOCK_DECAY_MULTIPLIER;
@@ -86,7 +112,11 @@ function memFallback(ip: string, max: number, windowMs: number) {
 }
 
 interface RedisLike {
-  eval: (script: string, numkeys: number, ...args: (string | number)[]) => Promise<unknown>;
+  eval: (
+    script: string,
+    numkeys: number,
+    ...args: (string | number)[]
+  ) => Promise<unknown>;
 }
 
 async function checkRedis(
@@ -116,9 +146,15 @@ async function checkRedis(
       `;
 
       const raw = await redis.eval(luaScript, 1, countKey, windowMs);
-      if (!Array.isArray(raw) || raw.length !== 2) throw new Error("Invalid Redis rate-limit response");
+      if (!Array.isArray(raw) || raw.length !== 2)
+        throw new Error("Invalid Redis rate-limit response");
       const [newCount, ttlMs] = raw.map(Number);
-      if (!Number.isFinite(newCount) || newCount < 0 || !Number.isFinite(ttlMs) || ttlMs < 0) {
+      if (
+        !Number.isFinite(newCount) ||
+        newCount < 0 ||
+        !Number.isFinite(ttlMs) ||
+        ttlMs < 0
+      ) {
         throw new Error("Invalid Redis rate-limit response");
       }
       const ttl = ttlMs > 0 ? Math.ceil(ttlMs / 1000) : windowSec;
@@ -137,15 +173,19 @@ async function checkRedis(
       retries++;
       recordFailure();
       if (retries >= maxRetries) {
-        throw new Error('Max retries exceeded', { cause: err });
+        throw new Error("Max retries exceeded", { cause: err });
       }
-      const delay = retryDelayMs !== null ? retryDelayMs : 100 * Math.pow(2, retries);
+      const delay =
+        retryDelayMs !== null ? retryDelayMs : 100 * Math.pow(2, retries);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 }
 
-function isExemptRoute(path: string, exemptRoutes: string[] = ['/health', '/status', '/favicon.ico']): boolean {
+function isExemptRoute(
+  path: string,
+  exemptRoutes: string[] = ["/health", "/status", "/favicon.ico"]
+): boolean {
   return exemptRoutes.includes(path);
 }
 
@@ -153,7 +193,7 @@ export function createRateLimiter({
   enabled = true,
   max = 100,
   windowMs = DEFAULT_WINDOW_MS,
-  exemptRoutes = ['/health', '/status', '/favicon.ico'],
+  exemptRoutes = ["/health", "/status", "/favicon.ico"],
   logger = console,
   retryDelayMs = null,
 }: {
@@ -164,10 +204,12 @@ export function createRateLimiter({
   logger?: typeof console;
   retryDelayMs?: number | null;
 } = {}) {
-
   const windowSec = Math.floor(windowMs / 1000);
 
-  if (!enabled) return async (_c: Context, next: Next) => { await next(); };
+  if (!enabled)
+    return async (_c: Context, next: Next) => {
+      await next();
+    };
 
   return async function rateLimiter(c: Context, next: Next) {
     const path = c.req.path;
@@ -183,29 +225,42 @@ export function createRateLimiter({
     let info;
     let usingRedis = false;
     try {
-      const redis = getRedis();
+      const redis = await getRedis();
       if (redis) {
-        info = await checkRedis(redis, ip, effectiveMax, windowSec, retryDelayMs);
+        info = await checkRedis(
+          redis,
+          ip,
+          effectiveMax,
+          windowSec,
+          retryDelayMs
+        );
         usingRedis = true;
       } else {
         info = memFallback(ip, effectiveMax, windowMs);
       }
     } catch (err) {
-      logger.error('Redis error, falling back to memory', (err as Error).message);
+      logger.error(
+        "Redis error, falling back to memory",
+        (err as Error).message
+      );
       info = memFallback(ip, effectiveMax, windowMs);
     }
 
-    c.header('X-RateLimit-Limit', String(effectiveMax));
-    c.header('X-RateLimit-Remaining', String(info.remaining));
-    c.header('X-RateLimit-Reset', String(info.reset));
-    c.header('X-RateLimit-Store', usingRedis ? 'redis' : 'memory');
+    c.header("X-RateLimit-Limit", String(effectiveMax));
+    c.header("X-RateLimit-Remaining", String(info.remaining));
+    c.header("X-RateLimit-Reset", String(info.reset));
+    c.header("X-RateLimit-Store", usingRedis ? "redis" : "memory");
 
     if (info.limited) {
-      logger.warn('Rate limit exceeded', { ip, path, retryAfter: info.retryAfter });
-      c.header('Retry-After', String(info.retryAfter));
+      logger.warn("Rate limit exceeded", {
+        ip,
+        path,
+        retryAfter: info.retryAfter,
+      });
+      c.header("Retry-After", String(info.retryAfter));
       return c.json(
         {
-          error: 'Too many requests',
+          error: "Too many requests",
           message: `Rate limit exceeded. Max ${max} requests per ${windowSec}s window.`,
           retryAfter: info.retryAfter,
         },
@@ -217,35 +272,70 @@ export function createRateLimiter({
   };
 }
 
-let configCache: { enabled: boolean; max: number; windowMs: number } | null = null;
+let configCache: { enabled: boolean; max: number; windowMs: number } | null =
+  null;
 let configCacheTime = 0;
 const CONFIG_CACHE_TTL_MS = 10_000;
 
-async function loadDbConfig(): Promise<{ enabled: boolean; max: number; windowMs: number }> {
+async function loadDbConfig(): Promise<{
+  enabled: boolean;
+  max: number;
+  windowMs: number;
+}> {
   try {
     const db = getDb();
-    const rows = await db.select()
+    const rows = await db
+      .select()
       .from(settings)
-      .where(inArray(settings.key, ["RATE_LIMIT_ENABLED", "RATE_LIMIT_MAX_REQUESTS", "RATE_LIMIT_WINDOW_MS"]))
+      .where(
+        inArray(settings.key, [
+          "RATE_LIMIT_ENABLED",
+          "RATE_LIMIT_MAX_REQUESTS",
+          "RATE_LIMIT_WINDOW_MS",
+        ])
+      )
       .all();
     const map: Record<string, string> = {};
     for (const row of rows) map[row.key] = row.value;
     return {
-      enabled: map.RATE_LIMIT_ENABLED !== undefined ? map.RATE_LIMIT_ENABLED === "true" : env.rateLimitEnabled,
-      max: map.RATE_LIMIT_MAX_REQUESTS !== undefined ? parseInt(map.RATE_LIMIT_MAX_REQUESTS, 10) || env.rateLimitMaxRequests : env.rateLimitMaxRequests,
-      windowMs: map.RATE_LIMIT_WINDOW_MS !== undefined ? parseInt(map.RATE_LIMIT_WINDOW_MS, 10) || env.rateLimitWindowMs : env.rateLimitWindowMs,
+      enabled:
+        map.RATE_LIMIT_ENABLED !== undefined
+          ? map.RATE_LIMIT_ENABLED === "true"
+          : env.rateLimitEnabled,
+      max:
+        map.RATE_LIMIT_MAX_REQUESTS !== undefined
+          ? parseInt(map.RATE_LIMIT_MAX_REQUESTS, 10) ||
+            env.rateLimitMaxRequests
+          : env.rateLimitMaxRequests,
+      windowMs:
+        map.RATE_LIMIT_WINDOW_MS !== undefined
+          ? parseInt(map.RATE_LIMIT_WINDOW_MS, 10) || env.rateLimitWindowMs
+          : env.rateLimitWindowMs,
     };
   } catch {
-    return { enabled: env.rateLimitEnabled, max: env.rateLimitMaxRequests, windowMs: env.rateLimitWindowMs };
+    return {
+      enabled: env.rateLimitEnabled,
+      max: env.rateLimitMaxRequests,
+      windowMs: env.rateLimitWindowMs,
+    };
   }
 }
 
-function getCachedConfigSync(): { enabled: boolean; max: number; windowMs: number } | null {
-  if (configCache && Date.now() - configCacheTime < CONFIG_CACHE_TTL_MS) return configCache;
+function getCachedConfigSync(): {
+  enabled: boolean;
+  max: number;
+  windowMs: number;
+} | null {
+  if (configCache && Date.now() - configCacheTime < CONFIG_CACHE_TTL_MS)
+    return configCache;
   return null;
 }
 
-async function getConfig(): Promise<{ enabled: boolean; max: number; windowMs: number }> {
+async function getConfig(): Promise<{
+  enabled: boolean;
+  max: number;
+  windowMs: number;
+}> {
   const cached = getCachedConfigSync();
   if (cached) return cached;
   configCache = await loadDbConfig();
@@ -259,7 +349,11 @@ export const rateLimitMiddleware = async (c: Context, next: Next) => {
     await next();
     return;
   }
-  return createRateLimiter({ enabled: true, max: cfg.max, windowMs: cfg.windowMs })(c, next);
+  return createRateLimiter({
+    enabled: true,
+    max: cfg.max,
+    windowMs: cfg.windowMs,
+  })(c, next);
 };
 
 export {
@@ -280,7 +374,9 @@ export {
   triggerCleanup,
 };
 
-export function getMemStore() { return memStore; }
+export function getMemStore() {
+  return memStore;
+}
 
 export function resetMemStore() {
   memStore.clear();
