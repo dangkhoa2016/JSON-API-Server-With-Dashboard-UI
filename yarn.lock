@@ -1117,12 +1117,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hono/node-server@npm:^2.0.5":
-  version: 2.0.11
-  resolution: "@hono/node-server@npm:2.0.11"
+"@hono/node-server@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "@hono/node-server@npm:2.1.0"
   peerDependencies:
     hono: ^4
-  checksum: 10c0/eedfff2122bcb23b368f4a785c2f8d93ecd653c14ecdbf47422fedeb559fb7201c183b10020c3cc01457d856cdda6868fdc5e8f60c3af1d6c6ddd77291689736
+  checksum: 10c0/907aa2cabb804cf6f9c6bc329a898803b0794992d1c2d1bea7e4ae803f5d205fd2733d684c9c87b28338964dc437341e3bee1544b4d504a6b19f9e65ba28b198
   languageName: node
   linkType: hard
 
@@ -4236,7 +4236,7 @@ __metadata:
     "@commitlint/cli": "npm:^21.1.0"
     "@commitlint/config-conventional": "npm:^21.1.0"
     "@eslint/js": "npm:^10.0.1"
-    "@hono/node-server": "npm:^2.0.5"
+    "@hono/node-server": "npm:^2.1.0"
     "@hono/vite-dev-server": "npm:^0.26.0"
     "@libsql/client": "npm:^0.17.4"
     "@lucide/vue": "npm:^1.28.0"
