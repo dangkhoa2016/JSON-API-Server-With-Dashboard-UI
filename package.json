@@ -38,7 +38,7 @@
   "dependencies": {
     "@hono/node-server": "^2.0.5",
     "@libsql/client": "^0.17.4",
-    "@lucide/vue": "^1.28.0",
+    "@lucide/vue": "^1.30.0",
     "@node-rs/argon2": "^2.0.2",
     "@tanstack/vue-query": "^5.101.0",
     "@trpc-vue-query/client": "^0.1.0",
