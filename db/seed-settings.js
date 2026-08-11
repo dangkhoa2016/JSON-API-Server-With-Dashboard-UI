@@ -12,6 +12,7 @@ export const settingDefs = [
   { key: "REDIS_PORT", type: "number", defaultValue: 6379, label: "Redis Port", description: "Redis server port", group: "redis", isPublic: true },
   { key: "REDIS_PASSWORD", type: "string", defaultValue: "", label: "Redis Password", description: "Redis server password", group: "redis", isPublic: false },
   { key: "REDIS_TTL", type: "number", defaultValue: 300, label: "Redis TTL", description: "Redis cache TTL in seconds", group: "redis", isPublic: true },
+  { key: "REDIS_URL", type: "string", defaultValue: "", label: "Redis URL", description: "Redis connection URL (redis://user:pass@host:port/db). Leave empty to build from host/port/password/db.", group: "redis", isPublic: false },
   { key: "RATE_LIMIT_ENABLED", type: "boolean", defaultValue: true, label: "Rate Limit Enabled", description: "Enable rate limiting", group: "rateLimit", isPublic: true },
   { key: "RATE_LIMIT_MAX_REQUESTS", type: "number", defaultValue: 100, label: "Rate Limit Max", description: "Maximum requests per window", group: "rateLimit", isPublic: true },
   { key: "RATE_LIMIT_WINDOW_MS", type: "number", defaultValue: 60000, label: "Rate Limit Window", description: "Rate limit window in milliseconds", group: "rateLimit", isPublic: true },

@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { sql, eq } from "drizzle-orm";
 import { hash } from "@node-rs/argon2";
 import {
@@ -525,6 +534,36 @@ describe("admin.settings.reset", () => {
     const result = await caller.settings.reset({ key: "REDIS_ENABLED" });
     expect(result.ok).toBe(false);
     delete process.env.REDIS_ENABLED;
+  });
+
+  it("resets REDIS_URL from env when present", async () => {
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('REDIS_URL', 'redis://old:6379/0', 'string', 'Redis URL', '', 'redis', 0)`);
+    process.env.REDIS_URL = "redis://new:6379/0";
+    const caller = createAdminCaller();
+
+    const result = await caller.settings.reset({ key: "REDIS_URL" });
+
+    expect(result.ok).toBe(true);
+    const row = await db
+      .select()
+      .from(schema.settings)
+      .where(eq(schema.settings.key, "REDIS_URL"))
+      .get();
+    expect(row?.value).toBe("redis://new:6379/0");
+    delete process.env.REDIS_URL;
+  });
+
+  it("masks REDIS_URL in settings list", async () => {
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('REDIS_URL', 'redis://user:pass@host:6379/0', 'string', 'Redis URL', '', 'redis', 0)`);
+
+    const result = await createAdminCaller().settings.list();
+
+    const redisUrl = result.find(s => s.key === "REDIS_URL");
+    expect(redisUrl?.value).toBe("********");
   });
 });
 

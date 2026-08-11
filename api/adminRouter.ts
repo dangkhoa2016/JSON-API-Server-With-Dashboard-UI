@@ -8,27 +8,51 @@ import * as schema from "../db/schema";
 import { replaceSeedData } from "../db/seed";
 import type { SeedDb } from "../db/config";
 import { createSession, verifySession } from "./lib/adminAuth";
+import { validateRedisUrl } from "@db/redis-url";
 const ALLOWED_RESET_KEYS = new Set([
-  "ADMIN_USERNAME", "ADMIN_PASSWORD_HASH", "APP_SECRET",
-  "REDIS_ENABLED", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DB",
-  "RATE_LIMIT_ENABLED", "RATE_LIMIT_MAX_REQUESTS", "RATE_LIMIT_WINDOW_MS",
-  "DEBUG_SQL", "DATABASE_URL", "REDIS_URL", "PORT", "CACHE_ENABLED",
+  "ADMIN_USERNAME",
+  "ADMIN_PASSWORD_HASH",
+  "APP_SECRET",
+  "REDIS_ENABLED",
+  "REDIS_HOST",
+  "REDIS_PORT",
+  "REDIS_PASSWORD",
+  "REDIS_DB",
+  "RATE_LIMIT_ENABLED",
+  "RATE_LIMIT_MAX_REQUESTS",
+  "RATE_LIMIT_WINDOW_MS",
+  "DEBUG_SQL",
+  "DATABASE_URL",
+  "REDIS_URL",
+  "PORT",
+  "CACHE_ENABLED",
 ]);
 
-const SENSITIVE_KEYS = new Set(["ADMIN_PASSWORD_HASH", "APP_SECRET", "REDIS_PASSWORD"]);
+const SENSITIVE_KEYS = new Set([
+  "ADMIN_PASSWORD_HASH",
+  "APP_SECRET",
+  "REDIS_PASSWORD",
+  "REDIS_URL",
+]);
 
 const LOGIN_ATTEMPTS = new Map<string, { count: number; resetAt: number }>();
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 let pruneTimer: ReturnType<typeof setInterval> | undefined;
 
-function checkLoginRateLimit(ip: string | undefined): { allowed: boolean; retryAfter?: number } {
+function checkLoginRateLimit(ip: string | undefined): {
+  allowed: boolean;
+  retryAfter?: number;
+} {
   if (!ip) return { allowed: true };
   const now = Date.now();
   const entry = LOGIN_ATTEMPTS.get(ip);
   if (!entry || entry.resetAt <= now) return { allowed: true };
   if (entry.count >= LOGIN_MAX_ATTEMPTS) {
-    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+    return {
+      allowed: false,
+      retryAfter: Math.ceil((entry.resetAt - now) / 1000),
+    };
   }
   return { allowed: true };
 }
@@ -56,7 +80,8 @@ function pruneLoginAttempts(): void {
 }
 
 export function startLoginRateLimitPruning(): void {
-  if (!pruneTimer) pruneTimer = setInterval(pruneLoginAttempts, LOGIN_WINDOW_MS);
+  if (!pruneTimer)
+    pruneTimer = setInterval(pruneLoginAttempts, LOGIN_WINDOW_MS);
   pruneTimer.unref?.();
 }
 
@@ -75,7 +100,9 @@ export function resetLoginRateLimit(): void {
 
 async function isAdminRequest(req: Request): Promise<boolean> {
   const authHeader = req.headers.get("authorization");
-  return authHeader?.startsWith("Bearer ") ? (await verifySession(authHeader.slice(7))) !== null : false;
+  return authHeader?.startsWith("Bearer ")
+    ? (await verifySession(authHeader.slice(7))) !== null
+    : false;
 }
 
 function maskSettingIfSensitive(row: schema.Setting): schema.Setting {
@@ -92,20 +119,36 @@ export const adminRouter = createRouter({
       .mutation(async ({ input, ctx }) => {
         const rateCheck = checkLoginRateLimit(ctx.clientIp);
         if (!rateCheck.allowed) {
-          return { ok: false, message: `Too many login attempts. Try again in ${rateCheck.retryAfter}s.` };
+          return {
+            ok: false,
+            message: `Too many login attempts. Try again in ${rateCheck.retryAfter}s.`,
+          };
         }
         const db = getDb();
         const trimmedUsername = input.username.trim();
-        const storedUsername = await db.select().from(schema.settings).where(eq(schema.settings.key, "ADMIN_USERNAME")).get();
-        const storedHash = await db.select().from(schema.settings).where(eq(schema.settings.key, "ADMIN_PASSWORD_HASH")).get();
+        const storedUsername = await db
+          .select()
+          .from(schema.settings)
+          .where(eq(schema.settings.key, "ADMIN_USERNAME"))
+          .get();
+        const storedHash = await db
+          .select()
+          .from(schema.settings)
+          .where(eq(schema.settings.key, "ADMIN_PASSWORD_HASH"))
+          .get();
 
         if (!storedUsername || !storedHash) {
           recordLoginFailure(ctx.clientIp);
           return { ok: false, message: "Admin credentials not configured" };
         }
 
-        if (trimmedUsername.length !== storedUsername.value.length ||
-            !timingSafeEqual(Buffer.from(trimmedUsername), Buffer.from(storedUsername.value))) {
+        if (
+          trimmedUsername.length !== storedUsername.value.length ||
+          !timingSafeEqual(
+            Buffer.from(trimmedUsername),
+            Buffer.from(storedUsername.value)
+          )
+        ) {
           recordLoginFailure(ctx.clientIp);
           return { ok: false, message: "Invalid username or password" };
         }
@@ -134,13 +177,18 @@ export const adminRouter = createRouter({
   }),
 
   settings: createRouter({
-    list: publicQuery.query(async (opts) => {
+    list: publicQuery.query(async opts => {
       const db = getDb();
       if (await isAdminRequest(opts.ctx.req)) {
-        const rows = await db.select().from(schema.settings).orderBy(schema.settings.group, schema.settings.key);
+        const rows = await db
+          .select()
+          .from(schema.settings)
+          .orderBy(schema.settings.group, schema.settings.key);
         return rows.map(maskSettingIfSensitive);
       }
-      return db.select().from(schema.settings)
+      return db
+        .select()
+        .from(schema.settings)
         .where(eq(schema.settings.isPublic, true))
         .orderBy(schema.settings.group, schema.settings.key);
     }),
@@ -150,17 +198,32 @@ export const adminRouter = createRouter({
       .query(async ({ input, ctx }) => {
         const db = getDb();
         const isAdmin = await isAdminRequest(ctx.req);
-        const setting = (await db.select().from(schema.settings).where(eq(schema.settings.key, input.key)).get()) ?? null;
+        const setting =
+          (await db
+            .select()
+            .from(schema.settings)
+            .where(eq(schema.settings.key, input.key))
+            .get()) ?? null;
         if (!setting) return null;
         if (!isAdmin && !setting.isPublic) return null;
         return maskSettingIfSensitive(setting);
       }),
 
     update: adminQuery
-      .input(z.object({ key: z.string(), value: z.string(), force: z.boolean().optional() }))
+      .input(
+        z.object({
+          key: z.string(),
+          value: z.string(),
+          force: z.boolean().optional(),
+        })
+      )
       .mutation(async ({ input }) => {
         const db = getDb();
-        const existing = await db.select().from(schema.settings).where(eq(schema.settings.key, input.key)).get();
+        const existing = await db
+          .select()
+          .from(schema.settings)
+          .where(eq(schema.settings.key, input.key))
+          .get();
         if (!existing) {
           return { ok: false, message: `Setting '${input.key}' not found` };
         }
@@ -168,16 +231,37 @@ export const adminRouter = createRouter({
           return { ok: false, message: "Value cannot be empty" };
         }
         if (/^\*+$/.test(input.value) && !input.force) {
-          return { ok: false, message: "Value cannot be all asterisks. Pass 'force: true' to override." };
+          return {
+            ok: false,
+            message:
+              "Value cannot be all asterisks. Pass 'force: true' to override.",
+          };
         }
-        if (input.key === "ADMIN_PASSWORD_HASH" && input.value.startsWith("$argon2")) {
-          return { ok: false, message: "Password hash detected. Please enter a plain text password instead." };
+        if (
+          input.key === "ADMIN_PASSWORD_HASH" &&
+          input.value.startsWith("$argon2")
+        ) {
+          return {
+            ok: false,
+            message:
+              "Password hash detected. Please enter a plain text password instead.",
+          };
+        }
+        if (input.key === "REDIS_URL") {
+          const error = validateRedisUrl(input.value);
+          if (error) {
+            return { ok: false, message: error };
+          }
         }
         let valueToStore = input.value;
         if (input.key === "ADMIN_PASSWORD_HASH") {
           valueToStore = await hash(input.value);
         }
-        await db.update(schema.settings).set({ value: valueToStore }).where(eq(schema.settings.key, input.key)).run();
+        await db
+          .update(schema.settings)
+          .set({ value: valueToStore })
+          .where(eq(schema.settings.key, input.key))
+          .run();
         return { ok: true };
       }),
 
@@ -185,18 +269,32 @@ export const adminRouter = createRouter({
       .input(z.object({ key: z.string() }))
       .mutation(async ({ input }) => {
         if (!ALLOWED_RESET_KEYS.has(input.key)) {
-          return { ok: false, message: "This setting cannot be reset from environment" };
+          return {
+            ok: false,
+            message: "This setting cannot be reset from environment",
+          };
         }
         const envValue = process.env[input.key];
         if (envValue === undefined) {
-          return { ok: false, message: "No environment value available for this setting" };
+          return {
+            ok: false,
+            message: "No environment value available for this setting",
+          };
         }
         const db = getDb();
-        const existing = await db.select().from(schema.settings).where(eq(schema.settings.key, input.key)).get();
+        const existing = await db
+          .select()
+          .from(schema.settings)
+          .where(eq(schema.settings.key, input.key))
+          .get();
         if (!existing) {
           return { ok: false, message: "Setting not found in database" };
         }
-        await db.update(schema.settings).set({ value: envValue }).where(eq(schema.settings.key, input.key)).run();
+        await db
+          .update(schema.settings)
+          .set({ value: envValue })
+          .where(eq(schema.settings.key, input.key))
+          .run();
         return { ok: true };
       }),
 
@@ -204,8 +302,11 @@ export const adminRouter = createRouter({
       .input(z.object({ key: z.string() }))
       .mutation(async ({ input }) => {
         const db = getDb();
-        const setting = await db.select().from(schema.settings)
-          .where(eq(schema.settings.key, input.key)).get();
+        const setting = await db
+          .select()
+          .from(schema.settings)
+          .where(eq(schema.settings.key, input.key))
+          .get();
         if (!setting) {
           return null;
         }
@@ -216,7 +317,7 @@ export const adminRouter = createRouter({
   data: createRouter({
     seed: adminQuery.mutation(async () => {
       const db = getDb();
-      await db.transaction(async (tx) => {
+      await db.transaction(async tx => {
         await replaceSeedData(tx as unknown as SeedDb);
       });
       return { ok: true };
@@ -224,7 +325,7 @@ export const adminRouter = createRouter({
 
     resetDatabase: adminQuery.mutation(async () => {
       const db = getDb();
-      await db.transaction(async (tx) => {
+      await db.transaction(async tx => {
         await replaceSeedData(tx as unknown as SeedDb, true);
       });
       return { ok: true };

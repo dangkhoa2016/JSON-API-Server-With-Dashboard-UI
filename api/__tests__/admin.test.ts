@@ -34,12 +34,15 @@ beforeEach(async () => {
     `);
   }
   // Refresh admin token before each test
-  const loginResponse = await appRouter.createCaller({
-    req: new Request("http://test.com"),
-    resHeaders: new Headers(),
-    clientIp: "203.0.113.10",
-  }).admin.auth.login({ username: "admin", password: "admin123" });
-  adminToken = loginResponse.ok && "token" in loginResponse ? loginResponse.token! : "";
+  const loginResponse = await appRouter
+    .createCaller({
+      req: new Request("http://test.com"),
+      resHeaders: new Headers(),
+      clientIp: "203.0.113.10",
+    })
+    .admin.auth.login({ username: "admin", password: "admin123" });
+  adminToken =
+    loginResponse.ok && "token" in loginResponse ? loginResponse.token! : "";
 });
 
 function createCaller() {
@@ -81,7 +84,9 @@ describe("admin.settings", () => {
 
   it("getByKey returns a setting by key", async () => {
     const caller = createCaller();
-    const setting = await caller.admin.settings.getByKey({ key: "REDIS_ENABLED" });
+    const setting = await caller.admin.settings.getByKey({
+      key: "REDIS_ENABLED",
+    });
     expect(setting).not.toBeNull();
     expect(setting!.key).toBe("REDIS_ENABLED");
     expect(setting!.value).toBe("false");
@@ -90,7 +95,9 @@ describe("admin.settings", () => {
 
   it("getByKey returns null for non-existent key", async () => {
     const caller = createCaller();
-    const result = await caller.admin.settings.getByKey({ key: "NON_EXISTENT" });
+    const result = await caller.admin.settings.getByKey({
+      key: "NON_EXISTENT",
+    });
     expect(result).toBeNull();
   });
 
@@ -123,56 +130,110 @@ describe("admin.settings", () => {
   });
 
   it("reveal rejects unauthenticated requests", async () => {
-    await expect(createCaller().admin.settings.reveal({ key: "APP_SECRET" }))
-      .rejects.toThrow("Admin authentication required");
+    await expect(
+      createCaller().admin.settings.reveal({ key: "APP_SECRET" })
+    ).rejects.toThrow("Admin authentication required");
   });
 
   it("update modifies an existing setting", async () => {
     const caller = createAdminCaller();
-    const result = await caller.admin.settings.update({ key: "REDIS_ENABLED", value: "true" });
+    const result = await caller.admin.settings.update({
+      key: "REDIS_ENABLED",
+      value: "true",
+    });
     expect(result.ok).toBe(true);
-    const setting = await caller.admin.settings.getByKey({ key: "REDIS_ENABLED" });
+    const setting = await caller.admin.settings.getByKey({
+      key: "REDIS_ENABLED",
+    });
     expect(setting!.value).toBe("true");
   });
 
   it("update returns error for non-existent key", async () => {
     const caller = createAdminCaller();
-    const result = await caller.admin.settings.update({ key: "NON_EXISTENT", value: "test" });
+    const result = await caller.admin.settings.update({
+      key: "NON_EXISTENT",
+      value: "test",
+    });
     expect(result.ok).toBe(false);
     expect(result.message).toContain("not found");
   });
 
   it("update rejects all-asterisk values without force", async () => {
     const caller = createAdminCaller();
-    const result = await caller.admin.settings.update({ key: "REDIS_ENABLED", value: "***" });
+    const result = await caller.admin.settings.update({
+      key: "REDIS_ENABLED",
+      value: "***",
+    });
     expect(result.ok).toBe(false);
     expect(result.message).toContain("all asterisks");
   });
 
   it("update allows all-asterisk values with force", async () => {
     const caller = createAdminCaller();
-    const result = await caller.admin.settings.update({ key: "REDIS_ENABLED", value: "***", force: true });
+    const result = await caller.admin.settings.update({
+      key: "REDIS_ENABLED",
+      value: "***",
+      force: true,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("update rejects invalid REDIS_URL", async () => {
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('REDIS_URL', 'redis://old:6379/0', 'string', 'Redis URL', '', 'redis', 0)`);
+    const caller = createAdminCaller();
+    const result = await caller.admin.settings.update({
+      key: "REDIS_URL",
+      value: "not-a-url",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("REDIS_URL");
+  });
+
+  it("update accepts valid REDIS_URL", async () => {
+    const db = getDb();
+    await db.run(sql`INSERT INTO settings (key, value, type, label, description, "group", is_public) VALUES
+      ('REDIS_URL', 'redis://old:6379/0', 'string', 'Redis URL', '', 'redis', 0)`);
+    const caller = createAdminCaller();
+    const result = await caller.admin.settings.update({
+      key: "REDIS_URL",
+      value: "redis://new:6379/0",
+    });
     expect(result.ok).toBe(true);
   });
 
   it("update rejects unauthenticated requests", async () => {
-    await expect(createCaller().admin.settings.update({ key: "REDIS_ENABLED", value: "test" }))
-      .rejects.toThrow("Admin authentication required");
+    await expect(
+      createCaller().admin.settings.update({
+        key: "REDIS_ENABLED",
+        value: "test",
+      })
+    ).rejects.toThrow("Admin authentication required");
   });
 
   it("reset restores setting from environment variable", async () => {
     process.env.REDIS_ENABLED = "true";
-    await createAdminCaller().admin.settings.update({ key: "REDIS_ENABLED", value: "false" });
-    const result = await createAdminCaller().admin.settings.reset({ key: "REDIS_ENABLED" });
+    await createAdminCaller().admin.settings.update({
+      key: "REDIS_ENABLED",
+      value: "false",
+    });
+    const result = await createAdminCaller().admin.settings.reset({
+      key: "REDIS_ENABLED",
+    });
     expect(result.ok).toBe(true);
-    const setting = await createAdminCaller().admin.settings.getByKey({ key: "REDIS_ENABLED" });
+    const setting = await createAdminCaller().admin.settings.getByKey({
+      key: "REDIS_ENABLED",
+    });
     expect(setting!.value).toBe("true");
     delete process.env.REDIS_ENABLED;
   });
 
   it("reset returns error when env var not set", async () => {
     delete process.env.REDIS_ENABLED;
-    const result = await createAdminCaller().admin.settings.reset({ key: "REDIS_ENABLED" });
+    const result = await createAdminCaller().admin.settings.reset({
+      key: "REDIS_ENABLED",
+    });
     expect(result.ok).toBe(false);
     expect(result.message).toContain("No environment value");
   });
@@ -197,7 +258,10 @@ describe("admin.settings", () => {
 
 describe("admin.auth", () => {
   it("login succeeds with correct credentials and returns a token", async () => {
-    const result = await createCaller().admin.auth.login({ username: "admin", password: "admin123" });
+    const result = await createCaller().admin.auth.login({
+      username: "admin",
+      password: "admin123",
+    });
     expect(result.ok).toBe(true);
     expect(result.username).toBe("admin");
     expect(result.role).toBe("admin");
@@ -206,13 +270,19 @@ describe("admin.auth", () => {
   });
 
   it("login fails with wrong password", async () => {
-    const result = await createCaller().admin.auth.login({ username: "admin", password: "wrongpass" });
+    const result = await createCaller().admin.auth.login({
+      username: "admin",
+      password: "wrongpass",
+    });
     expect(result.ok).toBe(false);
     expect(result.message).toBe("Invalid username or password");
   });
 
   it("login fails with wrong username", async () => {
-    const result = await createCaller().admin.auth.login({ username: "nobody", password: "admin123" });
+    const result = await createCaller().admin.auth.login({
+      username: "nobody",
+      password: "admin123",
+    });
     expect(result.ok).toBe(false);
     expect(result.message).toBe("Invalid username or password");
   });
@@ -221,7 +291,10 @@ describe("admin.auth", () => {
     const db = getDb();
     await db.run(sql`DELETE FROM settings WHERE key = 'ADMIN_USERNAME'`);
     await db.run(sql`DELETE FROM settings WHERE key = 'ADMIN_PASSWORD_HASH'`);
-    const result = await createCaller().admin.auth.login({ username: "admin", password: "admin123" });
+    const result = await createCaller().admin.auth.login({
+      username: "admin",
+      password: "admin123",
+    });
     expect(result.ok).toBe(false);
     expect(result.message).toBe("Admin credentials not configured");
   });
@@ -259,13 +332,49 @@ describe("admin.data", () => {
 
     const originalFetch = globalThis.fetch;
     const mockFetch = async (input: string | Request | URL) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
-      if (url.includes("/users")) return new Response(JSON.stringify([{ id: 1, name: "Mock", username: "mock", email: "m@m", address: {}, phone: "", website: "", company: {} }]));
-      if (url.includes("/posts")) return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t", body: "b" }]));
-      if (url.includes("/comments")) return new Response(JSON.stringify([{ id: 1, postId: 1, name: "n", email: "e", body: "b" }]));
-      if (url.includes("/albums")) return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t" }]));
-      if (url.includes("/photos")) return new Response(JSON.stringify([{ id: 1, albumId: 1, title: "t", url: "u", thumbnailUrl: "tu" }]));
-      if (url.includes("/todos")) return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t", completed: false }]));
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.href;
+      if (url.includes("/users"))
+        return new Response(
+          JSON.stringify([
+            {
+              id: 1,
+              name: "Mock",
+              username: "mock",
+              email: "m@m",
+              address: {},
+              phone: "",
+              website: "",
+              company: {},
+            },
+          ])
+        );
+      if (url.includes("/posts"))
+        return new Response(
+          JSON.stringify([{ id: 1, userId: 1, title: "t", body: "b" }])
+        );
+      if (url.includes("/comments"))
+        return new Response(
+          JSON.stringify([
+            { id: 1, postId: 1, name: "n", email: "e", body: "b" },
+          ])
+        );
+      if (url.includes("/albums"))
+        return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t" }]));
+      if (url.includes("/photos"))
+        return new Response(
+          JSON.stringify([
+            { id: 1, albumId: 1, title: "t", url: "u", thumbnailUrl: "tu" },
+          ])
+        );
+      if (url.includes("/todos"))
+        return new Response(
+          JSON.stringify([{ id: 1, userId: 1, title: "t", completed: false }])
+        );
       return new Response("[]");
     };
     globalThis.fetch = mockFetch;
@@ -286,13 +395,49 @@ describe("admin.data", () => {
 
     const originalFetch = globalThis.fetch;
     const mockFetch2 = async (input: string | Request | URL) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
-      if (url.includes("/users")) return new Response(JSON.stringify([{ id: 1, name: "Mock", username: "mock", email: "m@m", address: {}, phone: "", website: "", company: {} }]));
-      if (url.includes("/posts")) return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t", body: "b" }]));
-      if (url.includes("/comments")) return new Response(JSON.stringify([{ id: 1, postId: 1, name: "n", email: "e", body: "b" }]));
-      if (url.includes("/albums")) return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t" }]));
-      if (url.includes("/photos")) return new Response(JSON.stringify([{ id: 1, albumId: 1, title: "t", url: "u", thumbnailUrl: "tu" }]));
-      if (url.includes("/todos")) return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t", completed: false }]));
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.href;
+      if (url.includes("/users"))
+        return new Response(
+          JSON.stringify([
+            {
+              id: 1,
+              name: "Mock",
+              username: "mock",
+              email: "m@m",
+              address: {},
+              phone: "",
+              website: "",
+              company: {},
+            },
+          ])
+        );
+      if (url.includes("/posts"))
+        return new Response(
+          JSON.stringify([{ id: 1, userId: 1, title: "t", body: "b" }])
+        );
+      if (url.includes("/comments"))
+        return new Response(
+          JSON.stringify([
+            { id: 1, postId: 1, name: "n", email: "e", body: "b" },
+          ])
+        );
+      if (url.includes("/albums"))
+        return new Response(JSON.stringify([{ id: 1, userId: 1, title: "t" }]));
+      if (url.includes("/photos"))
+        return new Response(
+          JSON.stringify([
+            { id: 1, albumId: 1, title: "t", url: "u", thumbnailUrl: "tu" },
+          ])
+        );
+      if (url.includes("/todos"))
+        return new Response(
+          JSON.stringify([{ id: 1, userId: 1, title: "t", completed: false }])
+        );
       return new Response("[]");
     };
     globalThis.fetch = mockFetch2;
@@ -307,8 +452,9 @@ describe("admin.data", () => {
   });
 
   it("seed rejects unauthenticated requests", async () => {
-    await expect(createCaller().admin.data.seed())
-      .rejects.toThrow("Admin authentication required");
+    await expect(createCaller().admin.data.seed()).rejects.toThrow(
+      "Admin authentication required"
+    );
   });
 
   it("rejects requests with invalid token", async () => {
@@ -319,8 +465,9 @@ describe("admin.data", () => {
       resHeaders: new Headers(),
       clientIp: "203.0.113.10",
     });
-    await expect(caller.admin.data.seed())
-      .rejects.toThrow("Invalid or expired session");
+    await expect(caller.admin.data.seed()).rejects.toThrow(
+      "Invalid or expired session"
+    );
   });
 
   it("allows multiple concurrent admin sessions", async () => {
@@ -336,7 +483,10 @@ describe("admin.data", () => {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
     vi.spyOn(Date, "now").mockReturnValue(now - day - 1);
-    const loginResult = await createCaller().admin.auth.login({ username: "admin", password: "admin123" });
+    const loginResult = await createCaller().admin.auth.login({
+      username: "admin",
+      password: "admin123",
+    });
     vi.restoreAllMocks();
     const caller = appRouter.createCaller({
       req: new Request("http://test.com", {
@@ -345,7 +495,8 @@ describe("admin.data", () => {
       resHeaders: new Headers(),
       clientIp: "203.0.113.10",
     });
-    await expect(caller.admin.settings.update({ key: "REDIS_ENABLED", value: "x" }))
-      .rejects.toThrow("Invalid or expired session");
+    await expect(
+      caller.admin.settings.update({ key: "REDIS_ENABLED", value: "x" })
+    ).rejects.toThrow("Invalid or expired session");
   });
 });
