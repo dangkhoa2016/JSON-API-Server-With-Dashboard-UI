@@ -143,6 +143,7 @@ const emit = defineEmits<{
               <Pencil class="w-4 h-4" />
             </button>
             <button
+              v-if="setting.key !== 'ADMIN_PASSWORD_HASH'"
               class="inline-flex cursor-pointer items-center justify-center rounded-lg h-8 w-8 text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors duration-150"
               title="Reset to default"
               @click="emit('reset', setting.key)"
